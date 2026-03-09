@@ -1,0 +1,52 @@
+/* Chat page overrides */
+.chat-app .header {
+  position: relative;
+}
+
+.back-link {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--primary);
+}
+
+.section-hint {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: -0.5rem 0 1rem 0;
+}
+
+.wechat-display {
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+
+.chat-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.chat-header-row h2 {
+  margin: 0;
+}
+
+.current-user {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.chat-app .chat-section .messages {
+  min-height: 280px;
+  max-height: 50vh;
+  margin-bottom: 1rem;
+}

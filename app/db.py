@@ -1,0 +1,48 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+load_dotenv()
+
+from app.models import Base
+
+# Ensure all models are loaded so create_all creates their tables
+from app.models import User, Conversation, Message, SystemPrompt  # noqa: F401
+
+def _get_database_url() -> str:
+    url = os.getenv("DATABASE_URL", "")
+    if not url:
+        raise ValueError("DATABASE_URL must be set (in .env or environment)")
+    # Render/Heroku use postgres:// but psycopg2 requires postgresql://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
+
+
+DATABASE_URL = _get_database_url()
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+PROMPT_FILE = Path(__file__).parent.parent.parent / "prompt.md"
+
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+    _seed_system_prompt()
+
+
+def _seed_system_prompt():
+    """若 system_prompt 表为空，则从 prompt.md 导入默认值"""
+    db = SessionLocal()
+    try:
+        existing = db.query(SystemPrompt).filter_by(id=1).first()
+        if existing:
+            return
+        default_content = PROMPT_FILE.read_text(encoding="utf-8") if PROMPT_FILE.exists() else ""
+        db.add(SystemPrompt(id=1, content=default_content))
+        db.commit()
+    finally:
+        db.close()

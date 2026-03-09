@@ -1,0 +1,26 @@
+# Render Blueprint - deploy via Dashboard: New > Blueprint
+# https://render.com/docs/blueprint-spec
+
+databases:
+  - name: astra-db
+    plan: free
+    # PostgreSQL - tables are created automatically on first deploy via init_db()
+
+services:
+  - type: web
+    name: astra-core
+    runtime: python
+    plan: free
+
+    buildCommand: bash build.sh
+    startCommand: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: astra-db
+          property: connectionString
+      - key: DEEPSEEK_API_KEY
+        sync: false  # Set in Render Dashboard
+
+    healthCheckPath: /api/health

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>星盘解读</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <span class="header-links">
+        <a href="/prompt.html" class="nav-link">设置</a>
+        <a href="/chat.html" class="nav-link" id="chat-link">AI 对话</a>
+      </span>
+      <h1>星盘解读</h1>
+      <p class="tagline">基于出生信息的占星对话</p>
+    </header>
+
+    <main class="main">
+      <!-- Step 1: Birth Info Form -->
+      <section id="form-section" class="section">
+        <h2>出生信息</h2>
+        <form id="birth-form" class="form">
+          <div class="form-row">
+            <label for="date">出生日期</label>
+            <input type="date" id="date" name="date" required>
+          </div>
+          <div class="form-row">
+            <label for="time">出生时间（当地时间）</label>
+            <input type="time" id="time" name="time" required>
+          </div>
+          <div class="form-row">
+            <label>出生地（可选，不选则使用中国时区）</label>
+            <div class="map-picker">
+              <div class="map-search-row">
+                <input type="text" id="place-search" placeholder="搜索城市或地点..." autocomplete="off">
+                <button type="button" id="search-btn" class="btn btn-secondary">搜索</button>
+              </div>
+              <div id="map-container" class="map-container"></div>
+              <p class="map-hint">点击地图选择出生地，或在上方搜索</p>
+              <div id="selected-place" class="selected-place hidden">
+                <span id="selected-place-text"></span>
+                <button type="button" id="clear-place" class="btn-clear">清除</button>
+              </div>
+            </div>
+          </div>
+          <button type="submit" id="submit-btn" class="btn btn-primary">查看星盘并开始对话</button>
+        </form>
+      </section>
+
+      <!-- Step 2: Chart + Chat -->
+      <section id="chat-section" class="section hidden">
+        <div class="chart-summary" id="chart-summary"></div>
+        <div class="chat-container">
+          <div id="messages" class="messages"></div>
+          <form id="chat-form" class="chat-form">
+            <input type="text" id="question" placeholder="输入你的问题，例如：我的太阳星座有什么特点？" autocomplete="off">
+            <button type="submit" class="btn btn-primary">发送</button>
+          </form>
+        </div>
+        <button type="button" id="back-btn" class="btn btn-secondary">← 修改出生信息</button>
+      </section>
+    </main>
+
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <span>正在计算星盘...</span>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
+  <script src="app.js"></script>
+</body>
+</html>
