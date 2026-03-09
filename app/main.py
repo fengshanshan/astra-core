@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from fastapi import HTTPException
+from fastapi.responses import RedirectResponse
 
 from schemas import ChartRequest, ChatRequest, SimpleChatRequest, UserRegisterRequest, PromptUpdateRequest
 from app.services.chart_service import calculate_chart
@@ -182,6 +183,11 @@ def simple_chat(req: SimpleChatRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+
+@app.get("/chat.html")
+def redirect_chat():
+    """chat.html 已合并为首页，重定向到 /"""
+    return RedirectResponse(url="/", status_code=301)
 
 # Serve frontend (must be last - catches unmatched routes)
 STATIC_DIR = Path(__file__).parent.parent / "frontend"

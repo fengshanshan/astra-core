@@ -19,7 +19,6 @@ const mapContainer = document.getElementById("map-container");
 const selectedPlaceEl = document.getElementById("selected-place");
 const selectedPlaceText = document.getElementById("selected-place-text");
 const clearPlaceBtn = document.getElementById("clear-place");
-const backLink = document.getElementById("back-link");
 
 let wechatId = null;
 let selectedLocation = null;
@@ -43,15 +42,7 @@ function showSection(section) {
   section.classList.remove("hidden");
 }
 
-function updateBackLink() {
-  if (backLink && wechatId) {
-    backLink.href = `/?wechat_id=${encodeURIComponent(wechatId)}`;
-  } else if (backLink) {
-    backLink.href = "/";
-  }
-}
-
-// ========== Map (复用 index 逻辑) ==========
+// ========== Map ==========
 function initMap() {
   if (map) return;
   map = L.map(mapContainer).setView([35, 105], 3);
@@ -144,7 +135,6 @@ formObserver.observe(birthSection);
     if (!data.exists) return;
 
     wechatId = idFromUrl;
-    updateBackLink();
     wechatInput.value = idFromUrl;
     showSection(chatSection);
     currentUserEl.textContent = `用户: ${idFromUrl}`;
@@ -170,7 +160,6 @@ wechatForm.addEventListener("submit", async (e) => {
     const data = await res.json();
 
     wechatId = id;
-    updateBackLink();
     if (data.exists) {
       showSection(chatSection);
       currentUserEl.textContent = `用户: ${id}`;
@@ -215,7 +204,6 @@ birthForm.addEventListener("submit", async (e) => {
     }
     showSection(chatSection);
     currentUserEl.textContent = `用户: ${wechatId}`;
-    updateBackLink();
     await loadAndDisplayChart();
     messageInput.focus();
   } catch (err) {
@@ -262,6 +250,24 @@ function appendMessage(role, content) {
   div.textContent = content;
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function appendTypingIndicator() {
+  const div = document.createElement("div");
+  div.className = "message assistant typing";
+  div.dataset.typing = "1";
+  div.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function replaceTypingWithContent(typingEl, content) {
+  typingEl.classList.remove("typing");
+  typingEl.removeAttribute("data-typing");
+  typingEl.textContent = content;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 chatForm.addEventListener("submit", async (e) => {
@@ -274,7 +280,8 @@ chatForm.addEventListener("submit", async (e) => {
 
   const submitBtn = chatForm.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
-  showLoading(true, "AI 正在思考...");
+
+  const typingEl = appendTypingIndicator();
 
   try {
     const res = await fetch(`${API_BASE}/chat`, {
@@ -289,11 +296,10 @@ chatForm.addEventListener("submit", async (e) => {
     }
 
     const data = await res.json();
-    appendMessage("assistant", data.answer);
+    replaceTypingWithContent(typingEl, data.answer);
   } catch (err) {
-    appendMessage("assistant", "抱歉，暂时无法回答。请稍后重试。");
+    replaceTypingWithContent(typingEl, "抱歉，暂时无法回答。请稍后重试。");
   } finally {
     submitBtn.disabled = false;
-    showLoading(false);
   }
 });

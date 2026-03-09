@@ -33,9 +33,11 @@ astra-core/
 ├── prompt.md            # Astrologer system prompt
 ├── ephemeris/           # Swiss Ephemeris data (download separately)
 ├── frontend/            # Frontend UI
-│   ├── index.html
-│   ├── style.css
-│   └── app.js
+│   ├── index.html      # Main page (user identity → chat)
+│   ├── chat.js
+│   ├── chat.css
+│   ├── prompt.html     # System prompt editor
+│   └── style.css
 ├── pyproject.toml
 └── .env                 # DEEPSEEK_API_KEY
 ```
@@ -57,7 +59,7 @@ astra-core/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Frontend page |
+| `/` | GET | Main page (chat flow) |
 | `/api/health` | GET | Health check |
 | `/api/calculate-chart` | POST | Calculate chart |
 | `/api/chat` | POST | Chart + question → AI interpretation |
@@ -87,10 +89,10 @@ Latitude and longitude are optional; omit to use China timezone (Beijing).
 
 ## Frontend
 
-- Birth date and time input
+- User identity (wechat_id) → new user: birth form with map; existing user: direct to chat
 - Birthplace selection: Leaflet map click + Nominatim place search
 - Chart summary display
-- Astrological chat interface
+- Multi-turn astrological chat
 
 ---
 

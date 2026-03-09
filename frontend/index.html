@@ -3,36 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>星盘解读</title>
+  <title>AI 对话</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="chat.css">
 </head>
 <body>
-  <div class="app">
+  <div class="app chat-app">
     <header class="header">
-      <span class="header-links">
-        <a href="/prompt.html" class="nav-link">设置</a>
-        <a href="/chat.html" class="nav-link" id="chat-link">AI 对话</a>
-      </span>
-      <h1>星盘解读</h1>
-      <p class="tagline">基于出生信息的占星对话</p>
+      <a href="/prompt.html" class="nav-link header-right">设置</a>
+      <h1>AI 对话</h1>
+      <p class="tagline">与 AI 自由对话</p>
     </header>
 
     <main class="main">
-      <!-- Step 1: Birth Info Form -->
-      <section id="form-section" class="section">
-        <h2>出生信息</h2>
+      <!-- Step 1: Wechat ID 输入 -->
+      <section id="wechat-section" class="section">
+        <h2>用户身份</h2>
+        <form id="wechat-form" class="form">
+          <div class="form-row">
+            <label for="wechat-id">微信 ID / 用户标识</label>
+            <input type="text" id="wechat-id" placeholder="输入你的微信 ID" autocomplete="off" required>
+          </div>
+          <button type="submit" class="btn btn-primary">继续</button>
+        </form>
+      </section>
+
+      <!-- Step 2: 新建用户 - 出生信息 -->
+      <section id="birth-section" class="section hidden">
+        <h2>新建用户档案</h2>
+        <p class="section-hint">未找到该用户，请填写出生信息建立档案</p>
+        <p id="birth-wechat-display" class="wechat-display"></p>
         <form id="birth-form" class="form">
           <div class="form-row">
-            <label for="date">出生日期</label>
-            <input type="date" id="date" name="date" required>
+            <label for="birth-date">出生日期</label>
+            <input type="date" id="birth-date" name="date" required>
           </div>
           <div class="form-row">
-            <label for="time">出生时间（当地时间）</label>
-            <input type="time" id="time" name="time" required>
+            <label for="birth-time">出生时间（当地时间）</label>
+            <input type="time" id="birth-time" name="time" required>
           </div>
           <div class="form-row">
             <label>出生地（可选，不选则使用中国时区）</label>
@@ -49,31 +61,32 @@
               </div>
             </div>
           </div>
-          <button type="submit" id="submit-btn" class="btn btn-primary">查看星盘并开始对话</button>
+          <button type="submit" class="btn btn-primary">创建档案并开始对话</button>
         </form>
       </section>
 
-      <!-- Step 2: Chart + Chat -->
+      <!-- Step 3: 对话 -->
       <section id="chat-section" class="section hidden">
-        <div class="chart-summary" id="chart-summary"></div>
-        <div class="chat-container">
-          <div id="messages" class="messages"></div>
-          <form id="chat-form" class="chat-form">
-            <input type="text" id="question" placeholder="输入你的问题，例如：我的太阳星座有什么特点？" autocomplete="off">
-            <button type="submit" class="btn btn-primary">发送</button>
-          </form>
+        <div class="chat-header-row">
+          <h2>对话</h2>
+          <span id="current-user" class="current-user"></span>
         </div>
-        <button type="button" id="back-btn" class="btn btn-secondary">← 修改出生信息</button>
+        <div id="chart-summary" class="chart-summary hidden"></div>
+        <div id="messages" class="messages"></div>
+        <form id="chat-form" class="chat-form">
+          <input type="text" id="message-input" placeholder="输入消息..." autocomplete="off">
+          <button type="submit" class="btn btn-primary">发送</button>
+        </form>
       </section>
     </main>
 
     <div id="loading" class="loading hidden">
       <div class="spinner"></div>
-      <span>正在计算星盘...</span>
+      <span id="loading-text">加载中...</span>
     </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-  <script src="app.js"></script>
+  <script src="chat.js"></script>
 </body>
 </html>

@@ -26,23 +26,6 @@ DATABASE_URL = _get_database_url()
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-PROMPT_FILE = Path(__file__).parent.parent.parent / "prompt.md"
-
 
 def init_db():
     Base.metadata.create_all(bind=engine)
-    _seed_system_prompt()
-
-
-def _seed_system_prompt():
-    """若 system_prompt 表为空，则从 prompt.md 导入默认值"""
-    db = SessionLocal()
-    try:
-        existing = db.query(SystemPrompt).filter_by(id=1).first()
-        if existing:
-            return
-        default_content = PROMPT_FILE.read_text(encoding="utf-8") if PROMPT_FILE.exists() else ""
-        db.add(SystemPrompt(id=1, content=default_content))
-        db.commit()
-    finally:
-        db.close()
