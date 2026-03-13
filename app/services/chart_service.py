@@ -12,6 +12,8 @@ swe.set_ephe_path(str(EPHE_PATH))
 
 tf = TimezoneFinder()
 
+# 行星 + 外行星 + 虚点（顺序与常见星盘表一致）
+# 注：sepl_18.se1, semo_18.se1 覆盖行星；Chiron/Juno 需 seas_18.se1
 PLANETS = {
     "sun": swe.SUN,
     "moon": swe.MOON,
@@ -20,6 +22,12 @@ PLANETS = {
     "mars": swe.MARS,
     "jupiter": swe.JUPITER,
     "saturn": swe.SATURN,
+    "uranus": swe.URANUS,
+    "neptune": swe.NEPTUNE,
+    "pluto": swe.PLUTO,
+    "north_node": swe.TRUE_NODE,
+    "chiron": swe.CHIRON,
+    "juno": swe.JUNO,
 }
 
 ASPECTS = {
@@ -131,39 +139,76 @@ def calculate_chart(data):
 
     # 2️⃣ 计算宫位（Placidus）
     houses = swe.houses(jd, lat, lon, b"P")
-    asc_longitude = houses[1][0]
-    armc = houses[1][2]  # ARMC
+    cusps = houses[0]
+    ascmc = houses[1]
+    asc_longitude = ascmc[0]
+    mc_longitude = ascmc[1]
+    armc = ascmc[2]
+    vertex_longitude = ascmc[3]
     eps = swe.calc_ut(jd, swe.ECL_NUT)[0][0]  # obliquity
 
     planets_result = {}
     planet_longitudes = {}
 
-    # 3️⃣ 计算行星
-    for name, planet_id in PLANETS.items():
-        calc_result = swe.calc_ut(jd, planet_id)
+    STAT_STEP = 0.15  # 日运动 < 0.15° 视为停滞
 
-        longitude = calc_result[0][0]
-        speed = calc_result[0][3]
+    def _add_point(name, longitude, latitude, speed, house_num=None):
+        if house_num is None:
+            house_float = swe.house_pos(armc, lat, eps, (longitude, latitude), b"P")
+            house_num = int(house_float + 1e-6)
         planet_longitudes[name] = longitude
-
-        longitude = calc_result[0][0]
-        latitude = calc_result[0][1]  # 行星黄纬
-
-        house_float = swe.house_pos(
-            armc,
-            lat,
-            eps,
-            (longitude, latitude),  # 注意这里必须是 tuple
-            b"P",
-        )
-
-        house_number = int(house_float + 1e-6)
-
+        retro = speed < 0
+        stat = abs(speed) < STAT_STEP
         planets_result[name] = {
             **longitude_to_sign(longitude),
-            "house": house_number,
-            "retrograde": speed < 0,
+            "house": house_num,
+            "retrograde": retro,
+            "stationary": stat,
         }
+
+    # 3️⃣ 计算行星
+    for name, planet_id in PLANETS.items():
+        try:
+            calc_result = swe.calc_ut(jd, planet_id)
+        except swe.Error:
+            # Chiron/Juno 需 seas_18.se1，缺失时跳过
+            continue
+        longitude = calc_result[0][0]
+        speed = calc_result[0][3]
+        latitude = calc_result[0][1]
+        _add_point(name, longitude, latitude, speed)
+
+    # South Node = North Node + 180°
+    if "north_node" in planet_longitudes:
+        nn_lon = planet_longitudes["north_node"]
+        nn_speed = planets_result["north_node"]["retrograde"]
+        sn_lon = (nn_lon + 180) % 360
+        sn_house_float = swe.house_pos(armc, lat, eps, (sn_lon, 0), b"P")
+        _add_point("south_node", sn_lon, 0, -0.05 if nn_speed else 0.05, int(sn_house_float + 1e-6))
+
+    # Part of Fortune: 日生 Asc+Moon-Sun, 夜生 Asc+Sun-Moon
+    sun_lon = planet_longitudes["sun"]
+    moon_lon = planet_longitudes["moon"]
+    sun_house = planets_result["sun"]["house"]
+    is_day = 7 <= sun_house <= 12
+    if is_day:
+        pof_lon = (asc_longitude + moon_lon - sun_lon) % 360
+    else:
+        pof_lon = (asc_longitude + sun_lon - moon_lon) % 360
+    pof_house_float = swe.house_pos(armc, lat, eps, (pof_lon, 0), b"P")
+    _add_point("part_of_fortune", pof_lon, 0, 0, int(pof_house_float + 1e-6))
+
+    # Vertex（来自 ascmc）
+    vtx_house_float = swe.house_pos(armc, lat, eps, (vertex_longitude, 0), b"P")
+    _add_point("vertex", vertex_longitude, 0, 0, int(vtx_house_float + 1e-6))
+
+    # 四轴：ASC, DSC, MC, IC（不参与相位计算）
+    dsc_lon = (asc_longitude + 180) % 360
+    ic_lon = (mc_longitude + 180) % 360
+    planets_result["ascendant"] = {**longitude_to_sign(asc_longitude), "house": 1, "retrograde": False, "stationary": False}
+    planets_result["descendant"] = {**longitude_to_sign(dsc_lon), "house": 7, "retrograde": False, "stationary": False}
+    planets_result["mc"] = {**longitude_to_sign(mc_longitude), "house": 10, "retrograde": False, "stationary": False}
+    planets_result["ic"] = {**longitude_to_sign(ic_lon), "house": 4, "retrograde": False, "stationary": False}
 
     # 4️⃣ 相位
     aspects = calculate_aspects(planet_longitudes)
@@ -181,8 +226,6 @@ def calculate_chart(data):
     for aspect in aspects:
         p1, p2 = aspect["between"]
         features.append(f"{p1}_{aspect['type']}_{p2}")
-
-    features.append(f"ascendant_in_{longitude_to_sign(asc_longitude)['sign'].lower()}")
 
     return {
         "planets": planets_result,

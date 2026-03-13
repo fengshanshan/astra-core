@@ -111,7 +111,7 @@ Visit <http://localhost:8000>
 **Prerequisites:**
 
 - PostgreSQL running with database `astra` (or set `DATABASE_URL` in `.env`)
-- Swiss Ephemeris data in `ephemeris/` folder (for chart calculation)
+- Swiss Ephemeris data in `ephemeris/` folder: `sepl_18.se1`, `semo_18.se1` (planets); `seas_18.se1` for Chiron/Juno
 
 ---
 
