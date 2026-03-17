@@ -1,7 +1,9 @@
 import uuid
+from datetime import datetime
 from sqlalchemy import ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import DateTime
 
 from .base import Base
 
@@ -23,6 +25,18 @@ class Conversation(Base):
     )
 
     summary: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        nullable=False,
+    )
 
     user: Mapped["User"] = relationship(back_populates="conversations")
 

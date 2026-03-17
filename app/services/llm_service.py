@@ -27,40 +27,25 @@ def get_llm_client():
         api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com"
     )
 
-
-def generate_interpretation(prompt: str):
-    """
-    调用 DeepSeek 生成中文解读
-    """
-
-    client = get_llm_client()
-    system_prompt = get_system_prompt()
-
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.4,
-        max_tokens=800,
-    )
-
-    usage = None
-    if response.usage:
-        usage = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens,
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_chart",
+            "description": "Calculate natal chart from birth information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string"},
+                    "time": {"type": "string"},
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"}
+                },
+                "required": ["date", "time", "latitude", "longitude"]
+            }
         }
-
-    return {
-        "answer": response.choices[0].message.content,
-        "usage": usage,
     }
+]
 
 
 def call_llm(messages: list[dict], chart_context: str | None = None):
@@ -75,13 +60,16 @@ def call_llm(messages: list[dict], chart_context: str | None = None):
         system_prompt += f"\n\n## 当前用户星盘\n{chart_context}"
     else:
         system_prompt += "\n\n## 当前用户星盘\n用户暂无星盘数据，若问题与星盘相关请礼貌说明无法回答。"
+    
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
             {"role": "system", "content": system_prompt},
             *messages,
         ],
+        tools=TOOLS,
+        tool_choice="auto",
         temperature=0.4,
-        max_tokens=800,
+        max_tokens=8192,
     )
     return response.choices[0].message.content

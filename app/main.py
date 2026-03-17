@@ -4,21 +4,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from fastapi import HTTPException
-from fastapi.responses import RedirectResponse
-
-from schemas import ChartRequest, ChatRequest, SimpleChatRequest, UserRegisterRequest, PromptUpdateRequest
+import uuid
+from schemas import (
+    ChartRequest,
+    SimpleChatRequest,
+    SimpleChatResponse,
+    UserRegisterRequest,
+    PromptUpdateRequest,
+    ConversationCreateRequest,
+    ConversationOut,
+    MessageOut,
+)
 from app.services.chart_service import calculate_chart
-from app.services.chat_service import retrieve_knowledge, handle_chat
-from app.services.llm_service import generate_interpretation
+from app.services.chat_service import handle_chat
 from app.services.user_service import check_user_exists, register_user
 from app.db import init_db, SessionLocal
 from app.repositories.user_repo import get_user
-from app.models import SystemPrompt
+from app.models import SystemPrompt, Conversation, Message
 
 app = FastAPI()
 
@@ -33,63 +39,12 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "chart service running"}
+    return {"status": "ok"}
 
 
 @app.post("/api/calculate-chart")
 def calculate(request: ChartRequest):
     return calculate_chart(request)
-
-
-def build_chat_prompt(chart, matched_texts, user_question):
-
-    knowledge_section = "\n".join(matched_texts)
-
-    return f"""
-【星盘数据】
-{chart}
-
-【已匹配因素】
-{knowledge_section}
-
-【用户问题】
-{user_question}
-
-请基于星盘回答用户问题。
-"""
-
-
-@app.post("/api/chat")
-def chat(request: ChatRequest):
-
-    # 1. 计算星盘
-    result = calculate_chart(request)
-
-    planets = result["planets"]
-    ascendant = result["ascendant"]
-    aspects = result["aspects"]
-    features = result["features"]
-
-    # 2️⃣ 构造 chart_data（用于 prompt）
-    chart_data = {"planets": planets, "ascendant": ascendant, "aspects": aspects}
-
-    # 3️⃣ RAG：匹配知识块
-    matched_texts, used_triggers = retrieve_knowledge(features)
-
-    # 4️⃣ 构建 userprompt
-    prompt = build_chat_prompt(
-        chart=chart_data, matched_texts=matched_texts, user_question=request.question
-    )
-
-    # 5️⃣ 调用 DeepSeek
-    result = generate_interpretation(prompt)
-
-    return {
-        "answer": result["answer"],
-        "usage": result["usage"],
-        "triggers_used": used_triggers,
-        "chart": chart_data,
-    }
 
 
 @app.on_event("startup")
@@ -176,18 +131,104 @@ def update_prompt(req: PromptUpdateRequest):
 
 
 @app.post("/chat")
-def simple_chat(req: SimpleChatRequest):
+def simple_chat(req: SimpleChatRequest) -> SimpleChatResponse:
     try:
-        reply = handle_chat(req.wechat_id, req.message)
-        return {"answer": reply}
+        reply, conversation_id = handle_chat(req.wechat_id, req.message, conversation_id=req.conversation_id)
+        return SimpleChatResponse(answer=reply, conversation_id=conversation_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        msg = str(e)
+        status = 400 if "conversation_id" in msg else 404
+        raise HTTPException(status_code=status, detail=msg)
+
+@app.get("/api/conversations")
+def list_conversations(wechat_id: str) -> list[ConversationOut]:
+    db = SessionLocal()
+    try:
+        user = get_user(db, wechat_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        convs = (
+            db.query(Conversation)
+            .filter_by(user_id=user.id)
+            .order_by(Conversation.updated_at.desc())
+            .all()
+        )
+        return [
+            ConversationOut(
+                id=str(c.id),
+                summary=c.summary,
+                created_at=c.created_at.isoformat() if getattr(c, "created_at", None) else None,
+                updated_at=c.updated_at.isoformat() if getattr(c, "updated_at", None) else None,
+            )
+            for c in convs
+        ]
+    finally:
+        db.close()
 
 
-@app.get("/chat.html")
-def redirect_chat():
-    """chat.html 已合并为首页，重定向到 /"""
-    return RedirectResponse(url="/", status_code=301)
+@app.post("/api/conversations")
+def create_conversation(req: ConversationCreateRequest) -> ConversationOut:
+    db = SessionLocal()
+    try:
+        user = get_user(db, req.wechat_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        conv = Conversation(user_id=user.id)
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+
+        return ConversationOut(
+            id=str(conv.id),
+            summary=conv.summary,
+            created_at=conv.created_at.isoformat() if getattr(conv, "created_at", None) else None,
+            updated_at=conv.updated_at.isoformat() if getattr(conv, "updated_at", None) else None,
+        )
+    finally:
+        db.close()
+
+
+@app.get("/api/conversations/{conversation_id}/messages")
+def get_conversation_messages(conversation_id: str, wechat_id: str) -> list[MessageOut]:
+    db = SessionLocal()
+    try:
+        user = get_user(db, wechat_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="conversation_id 非法")
+
+        conv = (
+            db.query(Conversation)
+            .filter_by(id=conv_uuid, user_id=user.id)
+            .first()
+        )
+        if not conv:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        msgs = (
+            db.query(Message)
+            .filter_by(conversation_id=conv.id)
+            .order_by(Message.created_at.asc())
+            .all()
+        )
+        return [
+            MessageOut(
+                id=str(m.id),
+                role=m.role,
+                content=m.content,
+                created_at=m.created_at.isoformat(),
+            )
+            for m in msgs
+        ]
+    finally:
+        db.close()
+
 
 # Serve frontend (must be last - catches unmatched routes)
 STATIC_DIR = Path(__file__).parent.parent / "frontend"

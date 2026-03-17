@@ -10,17 +10,15 @@ class ChartRequest(BaseModel):
     longitude: Optional[float] = None
 
 
-class ChatRequest(BaseModel):
-    date: str  # YYYY-MM-DD
-    time: str  # HH:MM (local time)
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    question: str
-
-
 class SimpleChatRequest(BaseModel):
     wechat_id: str
     message: str
+    conversation_id: Optional[str] = None
+
+
+class SimpleChatResponse(BaseModel):
+    answer: str
+    conversation_id: str
 
 
 class UserRegisterRequest(BaseModel):
@@ -32,16 +30,23 @@ class UserRegisterRequest(BaseModel):
     place_name: Optional[str] = None
 
 
-class PlanetPosition(BaseModel):
-    sign: str
-    degree: float
-
-
-class ChartResponse(BaseModel):
-    sun: PlanetPosition
-    moon: PlanetPosition
-    ascendant: PlanetPosition
-
-
 class PromptUpdateRequest(BaseModel):
     content: str
+
+
+class ConversationCreateRequest(BaseModel):
+    wechat_id: str
+
+
+class ConversationOut(BaseModel):
+    id: str
+    summary: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class MessageOut(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: str

@@ -13,6 +13,8 @@ const loadingEl = document.getElementById("loading");
 const loadingText = document.getElementById("loading-text");
 const currentUserEl = document.getElementById("current-user");
 const chartSummaryEl = document.getElementById("chart-summary");
+const conversationSelect = document.getElementById("conversation-select");
+const newConversationBtn = document.getElementById("new-conversation-btn");
 const placeSearch = document.getElementById("place-search");
 const searchBtn = document.getElementById("search-btn");
 const mapContainer = document.getElementById("map-container");
@@ -24,6 +26,7 @@ let wechatId = null;
 let selectedLocation = null;
 let map = null;
 let marker = null;
+let currentConversationId = null;
 
 const NOMINATIM_HEADERS = {
   "Accept": "application/json",
@@ -139,6 +142,7 @@ formObserver.observe(birthSection);
     showSection(chatSection);
     currentUserEl.textContent = `用户: ${idFromUrl}`;
     await loadAndDisplayChart();
+    await ensureConversationReady();
     messageInput.focus();
   } catch {
     // 忽略错误
@@ -164,6 +168,7 @@ wechatForm.addEventListener("submit", async (e) => {
       showSection(chatSection);
       currentUserEl.textContent = `用户: ${id}`;
       await loadAndDisplayChart();
+      await ensureConversationReady();
       messageInput.focus();
     } else {
       document.getElementById("birth-wechat-display").textContent = `正在为「${id}」创建档案`;
@@ -205,6 +210,7 @@ birthForm.addEventListener("submit", async (e) => {
     showSection(chatSection);
     currentUserEl.textContent = `用户: ${wechatId}`;
     await loadAndDisplayChart();
+    await ensureConversationReady();
     messageInput.focus();
   } catch (err) {
     alert(err.message || "创建失败，请稍后重试");
@@ -243,6 +249,89 @@ async function loadAndDisplayChart() {
   }
 }
 
+function clearMessages() {
+  messagesEl.innerHTML = "";
+}
+
+function renderConversationOptions(conversations) {
+  conversationSelect.innerHTML = "";
+  if (!conversations.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "暂无会话";
+    conversationSelect.appendChild(opt);
+    conversationSelect.disabled = true;
+    return;
+  }
+  conversationSelect.disabled = false;
+  conversations.forEach((c, idx) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    const label = c.summary?.trim()
+      ? c.summary.trim().slice(0, 30)
+      : `会话 ${idx + 1}`;
+    opt.textContent = label;
+    conversationSelect.appendChild(opt);
+  });
+}
+
+async function fetchConversations() {
+  const res = await fetch(`${API_BASE}/api/conversations?wechat_id=${encodeURIComponent(wechatId)}`);
+  if (!res.ok) throw new Error("获取会话失败");
+  return await res.json();
+}
+
+async function createConversation() {
+  const res = await fetch(`${API_BASE}/api/conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wechat_id: wechatId }),
+  });
+  if (!res.ok) throw new Error("新建会话失败");
+  return await res.json();
+}
+
+async function fetchConversationMessages(conversationId) {
+  const res = await fetch(
+    `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/messages?wechat_id=${encodeURIComponent(wechatId)}`
+  );
+  if (!res.ok) throw new Error("获取会话消息失败");
+  return await res.json();
+}
+
+async function switchConversation(conversationId) {
+  currentConversationId = conversationId;
+  clearMessages();
+  if (!conversationId) return;
+  showLoading(true, "加载会话...");
+  try {
+    const msgs = await fetchConversationMessages(conversationId);
+    msgs.forEach((m) => {
+      if (m.role === "user" || m.role === "assistant") {
+        appendMessage(m.role, m.content);
+      }
+    });
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function ensureConversationReady() {
+  // 进入 chat 页面时：优先加载已有会话；若无会话则创建一个空会话
+  const convs = await fetchConversations();
+  if (!convs.length) {
+    const created = await createConversation();
+    renderConversationOptions([created]);
+    conversationSelect.value = created.id;
+    await switchConversation(created.id);
+    return;
+  }
+  renderConversationOptions(convs);
+  const firstId = convs[0].id;
+  conversationSelect.value = firstId;
+  await switchConversation(firstId);
+}
+
 // ========== Step 3: 对话 ==========
 function appendMessage(role, content) {
   const div = document.createElement("div");
@@ -274,6 +363,18 @@ chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = messageInput.value.trim();
   if (!message || !wechatId) return;
+  if (!currentConversationId) {
+    // 正常情况下不会发生（进入 chat 会创建/选择会话），兜底：先创建会话再发送
+    try {
+      const created = await createConversation();
+      const convs = await fetchConversations();
+      renderConversationOptions(convs);
+      conversationSelect.value = created.id;
+      await switchConversation(created.id);
+    } catch {
+      // ignore; will fail below
+    }
+  }
 
   appendMessage("user", message);
   messageInput.value = "";
@@ -287,7 +388,7 @@ chatForm.addEventListener("submit", async (e) => {
     const res = await fetch(`${API_BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wechat_id: wechatId, message }),
+      body: JSON.stringify({ wechat_id: wechatId, message, conversation_id: currentConversationId }),
     });
 
     if (!res.ok) {
@@ -296,10 +397,47 @@ chatForm.addEventListener("submit", async (e) => {
     }
 
     const data = await res.json();
+    if (data.conversation_id && data.conversation_id !== currentConversationId) {
+      // 后端可能创建了新会话：同步前端状态并刷新会话列表
+      currentConversationId = data.conversation_id;
+      const convs = await fetchConversations().catch(() => null);
+      if (convs) {
+        renderConversationOptions(convs);
+        conversationSelect.value = currentConversationId;
+      }
+    }
     replaceTypingWithContent(typingEl, data.answer);
   } catch (err) {
     replaceTypingWithContent(typingEl, "抱歉，暂时无法回答。请稍后重试。");
   } finally {
     submitBtn.disabled = false;
+  }
+});
+
+conversationSelect?.addEventListener("change", async () => {
+  const id = conversationSelect.value;
+  await switchConversation(id);
+});
+
+newConversationBtn?.addEventListener("click", async () => {
+  if (!wechatId) return;
+  showLoading(true, "新建会话...");
+  try {
+    const created = await createConversation();
+    // 直接追加到下拉框并切换到新会话，避免排序/刷新导致选择错乱
+    const opt = document.createElement("option");
+    opt.value = created.id;
+    opt.textContent = created.summary?.trim()
+      ? created.summary.trim().slice(0, 30)
+      : `会话 ${conversationSelect.options.length + 1}`;
+    conversationSelect.appendChild(opt);
+    conversationSelect.disabled = false;
+    conversationSelect.value = created.id;
+    await switchConversation(created.id);
+    messageInput.focus();
+  } catch (err) {
+    alert(err.message || "新建会话失败");
+  } finally {
+    showLoading(false);
   }
 });
