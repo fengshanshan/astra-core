@@ -76,6 +76,37 @@ CHART_NAME_MAP = {
 }
 
 
+def build_llm_chart_context(user: User) -> str | None:
+    """
+    供对话 LLM 使用的星盘上下文：优先 chart_summary，缺省时用 chart_snapshot 里的行星表重建；
+    并附带已建档的出生信息，避免模型在已有档案时仍索要出生日期/时间/地点。
+    """
+    blocks: list[str] = []
+    meta: list[str] = []
+    if user.birth_date:
+        meta.append(f"出生日期 {user.birth_date.isoformat()}")
+    if user.birth_time:
+        meta.append(f"出生时间 {user.birth_time.strftime('%H:%M')}")
+    if user.latitude is not None and user.longitude is not None:
+        meta.append(f"出生地经纬度 {user.latitude}, {user.longitude}")
+    if meta:
+        blocks.append(
+            "【系统已保存的出生资料（请勿向用户重复索要）】" + "，".join(meta)
+        )
+
+    summary = (user.chart_summary or "").strip()
+    if not summary and user.chart_snapshot and isinstance(user.chart_snapshot, dict):
+        planets = user.chart_snapshot.get("planets")
+        if planets:
+            summary = _build_chart_summary({"planets": planets}, None)
+    if summary:
+        blocks.append(summary)
+
+    if not blocks:
+        return None
+    return "\n\n".join(blocks)
+
+
 def _build_chart_summary(chart: dict, place_name: str | None) -> str:
     lines = []
     planets = chart.get("planets", {})

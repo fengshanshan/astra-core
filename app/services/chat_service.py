@@ -2,6 +2,7 @@ from app.services.llm_service import call_llm
 from app.models import Conversation, Message
 from app.db import SessionLocal
 from app.repositories.user_repo import get_user
+from app.services.user_service import build_llm_chart_context
 import uuid
 from datetime import datetime
 
@@ -92,7 +93,7 @@ def handle_chat(wechat_id: str, user_message: str, conversation_id: str | None =
                 messages.append({"role": m.role, "content": m.content})
         messages.append({"role": "user", "content": user_message})
 
-        chart_context = user.chart_summary
+        chart_context = build_llm_chart_context(user)
         assistant_reply = call_llm(messages, chart_context=chart_context, stage=conversation.stage)
 
         db.add(Message(conversation_id=conversation.id, role="user", content=user_message))
