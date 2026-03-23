@@ -49,13 +49,7 @@ def calculate(request: ChartRequest):
 
 @app.on_event("startup")
 def startup():
-    try:
-        init_db()
-    except Exception as e:
-        import logging
-        logging.getLogger("uvicorn.error").warning(
-            "Database init failed (chart features will work; /chat requires DB): %s", e
-        )
+    pass  # 数据库初始化已移至 scripts/init_db.py，不在服务启动时自动执行
 
 
 @app.get("/api/user/check")
@@ -133,8 +127,21 @@ def update_prompt(req: PromptUpdateRequest):
 @app.post("/chat")
 def simple_chat(req: SimpleChatRequest) -> SimpleChatResponse:
     try:
-        reply, conversation_id = handle_chat(req.wechat_id, req.message, conversation_id=req.conversation_id)
-        return SimpleChatResponse(answer=reply, conversation_id=conversation_id)
+        reply, conversation_id, stage = handle_chat(req.wechat_id, req.message, conversation_id=req.conversation_id)
+        db = SessionLocal()
+        try:
+            from app.models import Message as Msg
+            import uuid as _uuid
+            msg_count = db.query(Msg).filter_by(conversation_id=_uuid.UUID(conversation_id)).count()
+        finally:
+            db.close()
+        suggest_new = stage == 5 or msg_count > 24
+        return SimpleChatResponse(
+            answer=reply,
+            conversation_id=conversation_id,
+            stage=stage,
+            suggest_new_conversation=suggest_new,
+        )
     except ValueError as e:
         msg = str(e)
         status = 400 if "conversation_id" in msg else 404

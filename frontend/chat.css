@@ -119,3 +119,58 @@
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
   40% { transform: scale(1); opacity: 1; }
 }
+
+/* 新对话建议卡片 */
+.new-conv-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f5f0ff, #ffe9f7);
+  border: 1px solid #ddb8f5;
+  border-radius: 14px;
+  animation: fadeInUp 0.4s ease;
+}
+
+.new-conv-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.new-conv-text {
+  flex: 1;
+}
+
+.new-conv-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #5a2d82;
+}
+
+.new-conv-subtitle {
+  font-size: 0.8rem;
+  color: #7c5295;
+  margin-top: 2px;
+}
+
+.new-conv-btn {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.new-conv-btn:hover {
+  background: #6d28d9;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

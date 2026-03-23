@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import ForeignKey, Text
+from sqlalchemy import ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import DateTime
@@ -25,6 +25,10 @@ class Conversation(Base):
     )
 
     summary: Mapped[str | None] = mapped_column(Text)
+
+    stage: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
+
+    stage: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
