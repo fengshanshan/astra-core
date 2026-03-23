@@ -9,16 +9,28 @@
    - **PostgreSQL** database (`astra-db`)
    - **Web Service** (`astra-core`) linked to the database
 5. In the Web Service → **Environment**, set **DEEPSEEK_API_KEY** (mark as "secret").
-6. Deploy. Tables are created automatically on first startup via `init_db()`.
+6. 在 Environment 中设置 `INIT_DB=true`，触发一次 Manual Deploy 初始化数据库，完成后将 `INIT_DB` 改回 `false`。
 
 ## Database Initialization
 
-The app initializes the database on startup:
+数据库初始化**不会**在服务启动时自动执行，需要手动触发。
 
-- **Tables**: `users`, `conversations`, `messages`, `system_prompt` are created by SQLAlchemy `create_all()`.
-- **System prompt**: If `system_prompt` is empty, it seeds from `prompt.md`.
+### 本地初始化
 
-No manual migration is needed. The first request that triggers `init_db()` (or the startup event) will create everything.
+```bash
+python scripts/init_db.py
+```
+
+### Render.com 初始化
+
+数据库初始化在 **build 阶段**通过环境变量 `INIT_DB` 控制：
+
+1. Render Dashboard → Web Service → **Environment**
+2. 添加环境变量 `INIT_DB` = `true`
+3. 手动触发一次 **Manual Deploy**（Render 会在 build 时执行 `scripts/init_db.py`）
+4. 部署成功后，将 `INIT_DB` 改回 `false`（或删除该变量），避免下次 deploy 重复初始化
+
+> ⚠️ 每次设置 `INIT_DB=true` deploy 都会重新建表（`create_all` 幂等，不会删数据），但如果你手动清空了数据库再 init，旧数据会丢失。
 
 ## Environment Variables
 
@@ -26,6 +38,7 @@ No manual migration is needed. The first request that triggers `init_db()` (or t
 |----------|----------|--------|-------------|
 | `DATABASE_URL` | Yes | Render (auto from PostgreSQL) | Connection string. Render uses `postgres://`; the app converts to `postgresql://` for psycopg2. |
 | `DEEPSEEK_API_KEY` | Yes | You | DeepSeek API key for LLM. Add in Render Dashboard → Environment. |
+| `INIT_DB` | No | You | 设为 `true` 时，build 阶段自动初始化数据库建表。完成后改回 `false`。 |
 
 ## Manual Setup (without Blueprint)
 

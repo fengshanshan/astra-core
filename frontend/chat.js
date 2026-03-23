@@ -407,12 +407,38 @@ chatForm.addEventListener("submit", async (e) => {
       }
     }
     replaceTypingWithContent(typingEl, data.answer);
+    if (data.suggest_new_conversation) {
+      showNewConversationSuggestion();
+    }
   } catch (err) {
     replaceTypingWithContent(typingEl, "抱歉，暂时无法回答。请稍后重试。");
   } finally {
     submitBtn.disabled = false;
   }
 });
+
+function showNewConversationSuggestion() {
+  // 避免重复显示
+  if (document.getElementById("new-conv-suggestion")) return;
+  const card = document.createElement("div");
+  card.id = "new-conv-suggestion";
+  card.className = "new-conv-suggestion";
+  card.innerHTML = `
+    <span class="new-conv-icon">✨</span>
+    <div class="new-conv-text">
+      <div class="new-conv-title">这个话题已经告一段落～</div>
+      <div class="new-conv-subtitle">想聊新的困惑，可以开启一段新对话</div>
+    </div>
+    <button class="new-conv-btn" id="new-conv-suggestion-btn">开启新对话</button>
+  `;
+  messagesEl.appendChild(card);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  document.getElementById("new-conv-suggestion-btn").addEventListener("click", async () => {
+    card.remove();
+    newConversationBtn.click();
+  });
+}
 
 conversationSelect?.addEventListener("change", async () => {
   const id = conversationSelect.value;

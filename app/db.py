@@ -30,39 +30,3 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
-    _migrate_conversations_timestamps()
-
-
-def _migrate_conversations_timestamps() -> None:
-    """
-    Lightweight migration for older DBs:
-    - Add conversations.created_at / conversations.updated_at if missing.
-    This keeps existing deployments working without requiring alembic.
-    """
-    inspector = inspect(engine)
-    try:
-        cols = {c["name"] for c in inspector.get_columns("conversations")}
-    except Exception:
-        # conversations table may not exist yet, or DB not reachable
-        return
-
-    dialect = engine.dialect.name
-
-    stmts: list[str] = []
-    if "created_at" not in cols:
-        if dialect == "postgresql":
-            stmts.append("ALTER TABLE conversations ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
-        else:
-            stmts.append("ALTER TABLE conversations ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
-    if "updated_at" not in cols:
-        if dialect == "postgresql":
-            stmts.append("ALTER TABLE conversations ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
-        else:
-            stmts.append("ALTER TABLE conversations ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
-
-    if not stmts:
-        return
-
-    with engine.begin() as conn:
-        for stmt in stmts:
-            conn.execute(text(stmt))

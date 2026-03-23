@@ -19,6 +19,8 @@ class SimpleChatRequest(BaseModel):
 class SimpleChatResponse(BaseModel):
     answer: str
     conversation_id: str
+    stage: int
+    suggest_new_conversation: bool
 
 
 class UserRegisterRequest(BaseModel):
