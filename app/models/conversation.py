@@ -28,8 +28,6 @@ class Conversation(Base):
 
     stage: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
 
-    stage: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=datetime.utcnow,

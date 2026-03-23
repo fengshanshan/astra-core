@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 
 
-MAX_HISTORY = 10
+MAX_HISTORY = 60
 
 
 def _advance_stage(conversation: Conversation, message_count: int) -> bool:
