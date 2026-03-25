@@ -22,13 +22,13 @@ User input (birth info + question)
 astra-core/
 ├── app/
 │   ├── main.py              # FastAPI entry, API routes, static file serving
+│   ├── zodiac.py            # Longitude → sign/degree
 │   ├── services/
 │   │   ├── chart_service.py # Chart calculation (planets, houses, aspects)
 │   │   ├── chat_service.py  # RAG: feature matching against knowledge base
 │   │   └── llm_service.py   # DeepSeek API client
 │   └── knowledge/
 │       └── knowledge_base.py # Knowledge base (signs, retrogrades, aspects)
-├── zodiac.py            # Longitude → sign/degree
 ├── schemas.py           # Request/response models
 ├── prompt.md            # Astrologer system prompt
 ├── ephemeris/           # Swiss Ephemeris data (download separately)

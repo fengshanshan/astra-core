@@ -1,7 +1,8 @@
 from app.services.llm_service import call_llm
-from app.models import Conversation, Message
+from app.models import Conversation
 from app.db import SessionLocal
 from app.repositories.user_repo import get_user
+from app.repositories import conversation_repo, message_repo
 from app.services.user_service import build_llm_chart_context
 import uuid
 from datetime import datetime
@@ -22,12 +23,7 @@ def _advance_stage(conversation: Conversation, message_count: int) -> bool:
 
 def update_summary(conversation: Conversation, db) -> None:
     """每隔 6 轮或 stage 推进时，更新对话摘要。"""
-    messages_so_far = (
-        db.query(Message)
-        .filter_by(conversation_id=conversation.id)
-        .order_by(Message.created_at.asc())
-        .all()
-    )
+    messages_so_far = message_repo.list_all_asc(db, conversation.id)
     formatted = "\n".join(f"{m.role}: {m.content}" for m in messages_so_far)
     new_summary = call_llm(
         messages=[{
@@ -55,24 +51,13 @@ def handle_chat(wechat_id: str, user_message: str, conversation_id: str | None =
                 conv_uuid = uuid.UUID(conversation_id)
             except ValueError:
                 raise ValueError("conversation_id 非法")
-            conversation = (
-                db.query(Conversation)
-                .filter_by(id=conv_uuid, user_id=user.id)
-                .first()
-            )
+            conversation = conversation_repo.get_for_user(db, conv_uuid, user.id)
 
         if not conversation:
-            conversation = Conversation(user_id=user.id)
-            db.add(conversation)
-            db.commit()
-            db.refresh(conversation)
+            conversation = conversation_repo.create_for_user(db, user.id)
 
         # 统计当前消息数（用于 stage 推进和摘要触发）
-        message_count = (
-            db.query(Message)
-            .filter_by(conversation_id=conversation.id)
-            .count()
-        )
+        message_count = message_repo.count_for_conversation(db, conversation.id)
 
         # 构建发给 LLM 的消息列表
         messages = []
@@ -82,12 +67,8 @@ def handle_chat(wechat_id: str, user_message: str, conversation_id: str | None =
                 "content": f"【对话摘要】{conversation.summary}"
             })
         if conversation_id:
-            recent_messages = (
-                db.query(Message)
-                .filter_by(conversation_id=conversation.id)
-                .order_by(Message.created_at.desc())
-                .limit(MAX_HISTORY)
-                .all()
+            recent_messages = message_repo.list_recent_desc(
+                db, conversation.id, MAX_HISTORY
             )
             for m in reversed(recent_messages):
                 messages.append({"role": m.role, "content": m.content})
@@ -96,8 +77,9 @@ def handle_chat(wechat_id: str, user_message: str, conversation_id: str | None =
         chart_context = build_llm_chart_context(user)
         assistant_reply = call_llm(messages, chart_context=chart_context, stage=conversation.stage)
 
-        db.add(Message(conversation_id=conversation.id, role="user", content=user_message))
-        db.add(Message(conversation_id=conversation.id, role="assistant", content=assistant_reply))
+        message_repo.add_exchange(
+            db, conversation.id, user_message, assistant_reply
+        )
         conversation.updated_at = datetime.utcnow()
 
         # stage 推进（保存前计数加 2，因为刚加了 user + assistant 两条）

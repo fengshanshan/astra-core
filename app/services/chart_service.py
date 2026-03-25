@@ -4,7 +4,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from timezonefinder import TimezoneFinder
 
-from zodiac import longitude_to_sign
+from app.zodiac import longitude_to_sign
 
 # Ephemeris data path (project root / ephemeris)
 EPHE_PATH = Path(__file__).parent.parent.parent / "ephemeris"

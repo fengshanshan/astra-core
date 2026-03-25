@@ -253,6 +253,23 @@ function clearMessages() {
   messagesEl.innerHTML = "";
 }
 
+function conversationOptionLabel(c, idx) {
+  const iso = c.updated_at || c.created_at;
+  if (iso) {
+    const d = new Date(iso);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+  }
+  return `会话 ${idx + 1}`;
+}
+
 function renderConversationOptions(conversations) {
   conversationSelect.innerHTML = "";
   if (!conversations.length) {
@@ -267,10 +284,7 @@ function renderConversationOptions(conversations) {
   conversations.forEach((c, idx) => {
     const opt = document.createElement("option");
     opt.value = c.id;
-    const label = c.summary?.trim()
-      ? c.summary.trim().slice(0, 30)
-      : `会话 ${idx + 1}`;
-    opt.textContent = label;
+    opt.textContent = conversationOptionLabel(c, idx);
     conversationSelect.appendChild(opt);
   });
 }
@@ -453,9 +467,7 @@ newConversationBtn?.addEventListener("click", async () => {
     // 直接追加到下拉框并切换到新会话，避免排序/刷新导致选择错乱
     const opt = document.createElement("option");
     opt.value = created.id;
-    opt.textContent = created.summary?.trim()
-      ? created.summary.trim().slice(0, 30)
-      : `会话 ${conversationSelect.options.length + 1}`;
+    opt.textContent = conversationOptionLabel(created, conversationSelect.options.length);
     conversationSelect.appendChild(opt);
     conversationSelect.disabled = false;
     conversationSelect.value = created.id;

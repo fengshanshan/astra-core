@@ -24,7 +24,8 @@ from app.services.chat_service import handle_chat
 from app.services.user_service import check_user_exists, register_user
 from app.db import init_db, SessionLocal
 from app.repositories.user_repo import get_user
-from app.models import SystemPrompt, Conversation, Message
+from app.repositories import conversation_repo, message_repo
+from app.models import SystemPrompt, Conversation
 
 app = FastAPI()
 
@@ -130,9 +131,7 @@ def simple_chat(req: SimpleChatRequest) -> SimpleChatResponse:
         reply, conversation_id, stage = handle_chat(req.wechat_id, req.message, conversation_id=req.conversation_id)
         db = SessionLocal()
         try:
-            from app.models import Message as Msg
-            import uuid as _uuid
-            msg_count = db.query(Msg).filter_by(conversation_id=_uuid.UUID(conversation_id)).count()
+            msg_count = message_repo.count_for_conversation(db, uuid.UUID(conversation_id))
         finally:
             db.close()
         suggest_new = stage == 5 or msg_count > 24
@@ -155,12 +154,7 @@ def list_conversations(wechat_id: str) -> list[ConversationOut]:
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
 
-        convs = (
-            db.query(Conversation)
-            .filter_by(user_id=user.id)
-            .order_by(Conversation.updated_at.desc())
-            .all()
-        )
+        convs = conversation_repo.list_for_user(db, user.id)
         return [
             ConversationOut(
                 id=str(c.id),
@@ -182,10 +176,7 @@ def create_conversation(req: ConversationCreateRequest) -> ConversationOut:
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
 
-        conv = Conversation(user_id=user.id)
-        db.add(conv)
-        db.commit()
-        db.refresh(conv)
+        conv = conversation_repo.create_for_user(db, user.id)
 
         return ConversationOut(
             id=str(conv.id),
@@ -210,20 +201,11 @@ def get_conversation_messages(conversation_id: str, wechat_id: str) -> list[Mess
         except ValueError:
             raise HTTPException(status_code=400, detail="conversation_id 非法")
 
-        conv = (
-            db.query(Conversation)
-            .filter_by(id=conv_uuid, user_id=user.id)
-            .first()
-        )
+        conv = conversation_repo.get_for_user(db, conv_uuid, user.id)
         if not conv:
             raise HTTPException(status_code=404, detail="会话不存在")
 
-        msgs = (
-            db.query(Message)
-            .filter_by(conversation_id=conv.id)
-            .order_by(Message.created_at.asc())
-            .all()
-        )
+        msgs = message_repo.list_all_asc(db, conv.id)
         return [
             MessageOut(
                 id=str(m.id),
