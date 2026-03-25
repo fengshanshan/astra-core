@@ -1,7 +1,12 @@
-from pathlib import Path
-from openai import OpenAI
+import json
 import os
+from types import SimpleNamespace
+
 from dotenv import load_dotenv
+from openai import OpenAI
+
+from app.services.chart_service import calculate_chart
+from app.services.user_service import _build_chart_summary
 
 load_dotenv()
 
@@ -56,6 +61,53 @@ STAGE_INSTRUCTIONS = {
     5: "【当前阶段：第五步】请总结这段对话的核心洞察，并给出 1~2 个具体可行的行动建议。",
 }
 
+_EMPTY_ASSISTANT_FALLBACK = "抱歉，模型暂时未返回有效内容，请稍后再试或换种说法。"
+_EMPTY_SUMMARY_FALLBACK = "（摘要暂不可用）"
+_TOOL_NUDGE = "请直接用中文回复上一条用户消息，不要调用任何工具，回复不能为空。"
+
+
+def _run_calculate_chart_tool(arguments: str) -> str:
+    try:
+        args = json.loads(arguments) if arguments else {}
+    except json.JSONDecodeError:
+        return json.dumps({"error": "工具参数不是合法 JSON"}, ensure_ascii=False)
+    try:
+        data = SimpleNamespace(
+            date=args.get("date"),
+            time=args.get("time"),
+            latitude=args.get("latitude"),
+            longitude=args.get("longitude"),
+        )
+        chart = calculate_chart(data)
+        summary = _build_chart_summary(chart, None)
+        return json.dumps({"chart_text": summary}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+def _tool_result(name: str, arguments: str) -> str:
+    if name == "calculate_chart":
+        return _run_calculate_chart_tool(arguments)
+    return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
+
+
+def _assistant_api_dict(msg) -> dict:
+    row: dict = {"role": "assistant", "content": msg.content}
+    tcs = msg.tool_calls or []
+    if tcs:
+        row["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments or "{}",
+                },
+            }
+            for tc in tcs
+        ]
+    return row
+
 
 def call_llm(messages: list[dict], chart_context: str | None = None, stage: int | None = None, is_summary: bool = False):
     """
@@ -78,15 +130,40 @@ def call_llm(messages: list[dict], chart_context: str | None = None, stage: int 
         if stage and stage in STAGE_INSTRUCTIONS:
             system_prompt += f"\n\n{STAGE_INSTRUCTIONS[stage]}"
 
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            *messages,
-        ],
-        tools=TOOLS if not is_summary else [],
-        tool_choice="auto" if not is_summary else "none",
-        temperature=0.4,
-        max_tokens=8192,
-    )
-    return response.choices[0].message.content
+    api_messages: list[dict] = [{"role": "system", "content": system_prompt}, *messages]
+    use_tools = not is_summary
+    nudge_used = False
+    max_iterations = 8
+
+    for _ in range(max_iterations):
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=api_messages,
+            tools=TOOLS if use_tools else [],
+            tool_choice="auto" if use_tools else "none",
+            temperature=0.4,
+            max_tokens=8192,
+        )
+        msg = response.choices[0].message
+        tool_calls = list(msg.tool_calls or [])
+
+        if tool_calls:
+            api_messages.append(_assistant_api_dict(msg))
+            for tc in tool_calls:
+                out = _tool_result(tc.function.name, tc.function.arguments or "{}")
+                api_messages.append({"role": "tool", "tool_call_id": tc.id, "content": out})
+            continue
+
+        text = (msg.content or "").strip()
+        if text:
+            return text
+
+        if is_summary:
+            return _EMPTY_SUMMARY_FALLBACK
+        if not nudge_used:
+            nudge_used = True
+            api_messages.append({"role": "user", "content": _TOOL_NUDGE})
+            continue
+        return _EMPTY_ASSISTANT_FALLBACK
+
+    return _EMPTY_SUMMARY_FALLBACK if is_summary else _EMPTY_ASSISTANT_FALLBACK
