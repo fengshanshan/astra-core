@@ -46,8 +46,6 @@ DEFAULT_TZ = "Asia/Shanghai"
 # 北京坐标，未传经纬度时用于宫位计算
 DEFAULT_LAT, DEFAULT_LON = 39.9, 116.4
 
-tf = TimezoneFinder()
-
 
 def local_to_utc(date_str, time_str, lat, lon):
     """

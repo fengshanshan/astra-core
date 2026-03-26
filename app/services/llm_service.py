@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import re
 from types import SimpleNamespace
 
 from dotenv import load_dotenv
@@ -10,11 +12,15 @@ from app.services.user_service import _build_chart_summary
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
+
 def get_system_prompt() -> str:
-    """优先从数据库读取，若不存在则从 prompt.md 读取"""
+    """从数据库读取 SystemPrompt（id=1）；无有效内容或失败时返回空字符串。"""
     try:
         from app.db import SessionLocal
         from app.models import SystemPrompt
+
         db = SessionLocal()
         try:
             row = db.query(SystemPrompt).filter_by(id=1).first()
@@ -23,7 +29,7 @@ def get_system_prompt() -> str:
         finally:
             db.close()
     except Exception:
-        pass
+        logger.exception("从数据库读取 SystemPrompt 失败")
     return ""
 
 
@@ -63,7 +69,8 @@ STAGE_INSTRUCTIONS = {
 
 _EMPTY_ASSISTANT_FALLBACK = "抱歉，模型暂时未返回有效内容，请稍后再试或换种说法。"
 _EMPTY_SUMMARY_FALLBACK = "（摘要暂不可用）"
-_TOOL_NUDGE = "请直接用中文回复上一条用户消息，不要调用任何工具，回复不能为空。"
+_TOOL_NUDGE = "请直接用繁体中文回复上一条用户消息，不要调用任何工具，回复不能为空。"
+_STAGE_TAG_PATTERN = re.compile(r"\[STAGE=(?P<stage>[1-5])\]\s*$")
 
 
 def _run_calculate_chart_tool(arguments: str) -> str:
@@ -109,13 +116,32 @@ def _assistant_api_dict(msg) -> dict:
     return row
 
 
-def call_llm(messages: list[dict], chart_context: str | None = None, stage: int | None = None, is_summary: bool = False):
+def _extract_stage_tag(text: str) -> tuple[str, int | None]:
+    stripped = text.strip()
+    m = _STAGE_TAG_PATTERN.search(stripped)
+    if not m:
+        return stripped, None
+    stage_text = m.group("stage")
+    cleaned = _STAGE_TAG_PATTERN.sub("", stripped).rstrip()
+    return cleaned, int(stage_text)
+
+
+def call_llm(
+    messages: list[dict],
+    chart_context: str | None = None,
+    stage: int | None = None,
+    is_summary: bool = False,
+    conversation_summary: str | None = None,
+    with_stage_suggestion: bool = False,
+) -> str | tuple[str, int | None]:
     """
     多轮对话模式：messages 为 [{"role": "user"|"assistant", "content": "..."}, ...]
     会与 system prompt 一起传给模型，保持完整对话上下文。
     chart_context: 用户星盘摘要，供模型基于星盘回答；为 None 时表示用户暂无星盘数据。
     stage: 当前对话阶段（1~5），会在 system prompt 末尾附加对应的阶段指令。
     is_summary: 为 True 时跳过阶段指令和星盘信息，仅用于生成摘要。
+    conversation_summary: 压缩后的历史摘要，并入单条 system，避免多条 system 消息。
+    with_stage_suggestion: True 时在同一次回复中附带下一阶段建议，并返回 (reply, suggested_stage)。
     """
     client = get_llm_client()
 
@@ -127,8 +153,17 @@ def call_llm(messages: list[dict], chart_context: str | None = None, stage: int 
             system_prompt += f"\n\n## 当前用户星盘\n{chart_context}"
         else:
             system_prompt += "\n\n## 当前用户星盘\n用户暂无星盘数据，若问题与星盘相关请礼貌说明无法回答。"
+        if conversation_summary:
+            system_prompt += f"\n\n## 对话摘要\n{conversation_summary}"
         if stage and stage in STAGE_INSTRUCTIONS:
             system_prompt += f"\n\n{STAGE_INSTRUCTIONS[stage]}"
+        if with_stage_suggestion and stage:
+            system_prompt += (
+                "\n\n## 阶段建议输出要求\n"
+                f"当前阶段是 {stage}。请在正常回复结束后，最后单独一行输出 [STAGE=n]。\n"
+                "n 必须是 1~5 的整数，且只能等于当前阶段或当前阶段+1。\n"
+                "除这一行外，不要输出任何额外元信息。"
+            )
 
     api_messages: list[dict] = [{"role": "system", "content": system_prompt}, *messages]
     use_tools = not is_summary
@@ -156,13 +191,19 @@ def call_llm(messages: list[dict], chart_context: str | None = None, stage: int 
 
         text = (msg.content or "").strip()
         if text:
+            if with_stage_suggestion and not is_summary:
+                cleaned, suggested_stage = _extract_stage_tag(text)
+                return cleaned or _EMPTY_ASSISTANT_FALLBACK, suggested_stage
             return text
 
         if is_summary:
             return _EMPTY_SUMMARY_FALLBACK
         if not nudge_used:
             nudge_used = True
-            api_messages.append({"role": "user", "content": _TOOL_NUDGE})
+            nudge = _TOOL_NUDGE
+            if with_stage_suggestion and stage:
+                nudge += f" 结尾必须单独一行输出 [STAGE=n]，n 只能是 {stage} 或 {min(stage + 1, 5)}。"
+            api_messages.append({"role": "user", "content": nudge})
             continue
         return _EMPTY_ASSISTANT_FALLBACK
 

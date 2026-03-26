@@ -1,8 +1,15 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _cors_allow_credentials() -> bool:
+    """与 allow_origins 搭配：仅当使用具体来源列表时允许携带凭证（浏览器不接受 * + credentials）。"""
+    raw = os.getenv("CORS_ORIGINS", "*").strip()
+    return bool(raw and raw != "*")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,11 +36,18 @@ from app.models import SystemPrompt, Conversation
 
 app = FastAPI()
 
-# CORS for frontend (e.g. when served from different origin)
+# CORS：默认 * 且不带 credentials；生产可设 CORS_ORIGINS=https://a.com,https://b.com 以启用 credentials
+_cors_origins = os.getenv("CORS_ORIGINS", "*").strip() or "*"
+_cors_origins_list = (
+    ["*"]
+    if _cors_origins == "*"
+    else [o.strip() for o in _cors_origins.split(",") if o.strip()]
+) or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins_list,
+    allow_credentials=_cors_allow_credentials(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
