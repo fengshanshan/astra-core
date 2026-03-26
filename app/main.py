@@ -148,7 +148,9 @@ def simple_chat(req: SimpleChatRequest) -> SimpleChatResponse:
             msg_count = message_repo.count_for_conversation(db, uuid.UUID(conversation_id))
         finally:
             db.close()
-        suggest_new = stage == 5 or msg_count > 24
+        # stage5 之后且会话消息足够长时，提示开启新对话
+        # （stage 的业务上限为 5，所以这里等价于 stage == 5）
+        suggest_new = stage >= 5 and msg_count > 30
         return SimpleChatResponse(
             answer=reply,
             conversation_id=conversation_id,

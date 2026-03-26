@@ -331,19 +331,19 @@ async function switchConversation(conversationId) {
 }
 
 async function ensureConversationReady() {
-  // 进入 chat 页面时：优先加载已有会话；若无会话则创建一个空会话
-  const convs = await fetchConversations();
-  if (!convs.length) {
-    const created = await createConversation();
-    renderConversationOptions([created]);
-    conversationSelect.value = created.id;
-    await switchConversation(created.id);
-    return;
-  }
+  // 进入 chat 页面时：默认开启新对话（与主流产品一致），历史会话仍可从下拉框切换
+  const convs = await fetchConversations().catch(() => []);
   renderConversationOptions(convs);
-  const firstId = convs[0].id;
-  conversationSelect.value = firstId;
-  await switchConversation(firstId);
+
+  const created = await createConversation();
+  // 直接追加到下拉框并切换到新会话，避免排序/刷新导致选择错乱
+  const opt = document.createElement("option");
+  opt.value = created.id;
+  opt.textContent = conversationOptionLabel(created, conversationSelect.options.length);
+  conversationSelect.appendChild(opt);
+  conversationSelect.disabled = false;
+  conversationSelect.value = created.id;
+  await switchConversation(created.id);
 }
 
 // ========== Step 3: 对话 ==========
