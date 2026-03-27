@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 import logging
+import re
 
 from app.db import SessionLocal
 from app.models import Conversation
@@ -12,6 +13,40 @@ from app.services.user_service import build_llm_chart_context
 
 MAX_HISTORY = 60
 logger = logging.getLogger(__name__)
+_THIRD_PARTY_HINT_PATTERN = re.compile(
+    r"(他|她|对方|另一半|对象|男友|女友|老公|老婆|丈夫|妻子|前任|同事|朋友|闺蜜|家人|爸爸|妈妈|父亲|母亲|儿子|女儿|孩子)",
+)
+_TOOL_GATE_LOOKBACK = 8
+
+
+def _tool_gate_reason(message: str, history: list[dict], summary_text: str | None) -> tuple[bool, str]:
+    """第三方工具开关：优先看当前句，其次看最近上下文与摘要。"""
+    text = (message or "").strip()
+    if text:
+        m = _THIRD_PARTY_HINT_PATTERN.search(text)
+        if m:
+            return True, f"third_party_hint:current:{m.group(0)}"
+
+    lookback = history[-_TOOL_GATE_LOOKBACK:] if history else []
+    for idx, row in enumerate(reversed(lookback), start=1):
+        content = (row.get("content") or "").strip()
+        if not content:
+            continue
+        m = _THIRD_PARTY_HINT_PATTERN.search(content)
+        if m:
+            return True, f"third_party_hint:history-{idx}:{m.group(0)}"
+
+    if summary_text:
+        m = _THIRD_PARTY_HINT_PATTERN.search(summary_text)
+        if m:
+            return True, f"third_party_hint:summary:{m.group(0)}"
+
+    if not text:
+        return False, "empty_message_no_context"
+    m = _THIRD_PARTY_HINT_PATTERN.search(text)
+    if not m:
+        return False, "no_third_party_hint"
+    return True, f"third_party_hint:{m.group(0)}"
 
 
 def _advance_stage(conversation: Conversation, message_count: int) -> bool:
@@ -119,6 +154,14 @@ def handle_chat(wechat_id: str, user_message: str, conversation_id: str | None =
         db.close()
 
     messages: list[dict] = [*history, {"role": "user", "content": user_message}]
+    allow_tools, gate_reason = _tool_gate_reason(user_message, history, summary_text)
+    logger.info(
+        "chat_tool_gate conversation_id=%s stage=%s allow_tools=%s reason=%s",
+        conv_uuid,
+        stage,
+        allow_tools,
+        gate_reason,
+    )
 
     assistant_reply, suggested_stage = call_llm(
         messages,
@@ -126,6 +169,7 @@ def handle_chat(wechat_id: str, user_message: str, conversation_id: str | None =
         stage=stage,
         conversation_summary=summary_text,
         with_stage_suggestion=True,
+        allow_tools=allow_tools,
     )
 
     db = SessionLocal()

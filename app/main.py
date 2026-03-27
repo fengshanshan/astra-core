@@ -1,9 +1,16 @@
 import os
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    force=True,
+)
 
 
 def _cors_allow_credentials() -> bool:
