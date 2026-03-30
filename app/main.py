@@ -1,6 +1,9 @@
 import os
 import logging
 from pathlib import Path
+from collections import defaultdict, deque
+from threading import Lock
+from time import time
 
 from dotenv import load_dotenv
 
@@ -18,7 +21,7 @@ def _cors_allow_credentials() -> bool:
     raw = os.getenv("CORS_ORIGINS", "*").strip()
     return bool(raw and raw != "*")
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -42,6 +45,70 @@ from app.repositories import conversation_repo, message_repo
 from app.models import SystemPrompt, Conversation
 
 app = FastAPI()
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+        return value if value > 0 else default
+    except ValueError:
+        return default
+
+
+class _InMemoryRateLimiter:
+    """Simple sliding-window limiter for single-process deployments."""
+
+    def __init__(self, max_requests: int, window_seconds: int):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            bucket = self._hits[key]
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if len(bucket) >= self.max_requests:
+                return False
+            bucket.append(now)
+            return True
+
+
+_CHAT_LIMIT_COUNT = _parse_int_env("CHAT_RATE_LIMIT_COUNT", 20)
+_CHAT_LIMIT_WINDOW_SEC = _parse_int_env("CHAT_RATE_LIMIT_WINDOW_SEC", 60)
+_chat_rate_limiter = _InMemoryRateLimiter(_CHAT_LIMIT_COUNT, _CHAT_LIMIT_WINDOW_SEC)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded_for = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _enforce_chat_access_guard(request: Request, wechat_id: str) -> None:
+    token_required = os.getenv("CHAT_ACCESS_TOKEN", "").strip()
+    token_given = (request.headers.get("x-chat-token") or "").strip()
+    if token_required and token_given != token_required:
+        raise HTTPException(status_code=401, detail="chat token 无效")
+
+    allowlist_raw = os.getenv("CHAT_ALLOWED_WECHAT_IDS", "").strip()
+    if allowlist_raw:
+        allowlist = {item.strip() for item in allowlist_raw.split(",") if item.strip()}
+        if wechat_id not in allowlist:
+            raise HTTPException(status_code=403, detail="当前用户不允许访问 chat")
+
+    limiter_key = f"{wechat_id}:{_client_ip(request)}"
+    if not _chat_rate_limiter.allow(limiter_key):
+        raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
 
 # CORS：默认 * 且不带 credentials；生产可设 CORS_ORIGINS=https://a.com,https://b.com 以启用 credentials
 _cors_origins = os.getenv("CORS_ORIGINS", "*").strip() or "*"
@@ -147,8 +214,9 @@ def update_prompt(req: PromptUpdateRequest):
 
 
 @app.post("/chat")
-def simple_chat(req: SimpleChatRequest) -> SimpleChatResponse:
+def simple_chat(req: SimpleChatRequest, request: Request) -> SimpleChatResponse:
     try:
+        _enforce_chat_access_guard(request, req.wechat_id)
         reply, conversation_id, stage = handle_chat(req.wechat_id, req.message, conversation_id=req.conversation_id)
         db = SessionLocal()
         try:
