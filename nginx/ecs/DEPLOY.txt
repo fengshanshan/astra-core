@@ -1,0 +1,24 @@
+Nginx 限流（ECS 宿主机）
+
+1. 复制限流区定义：
+   sudo cp nginx/ecs/00-limits.conf /etc/nginx/conf.d/00-limits.conf
+
+2. 编辑站点：把 astra-site.conf 里 YOUR_DOMAIN 换成你的域名，再：
+   sudo cp nginx/ecs/astra-site.conf /etc/nginx/sites-available/astra
+   sudo ln -sf /etc/nginx/sites-available/astra /etc/nginx/sites-enabled/
+   sudo rm -f /etc/nginx/sites-enabled/default
+
+3. 测试并重载：
+   sudo nginx -t && sudo systemctl reload nginx
+
+4. HTTPS：
+   sudo certbot --nginx -d 你的域名
+
+5. 调松紧：编辑 00-limits.conf 中的 rate= 后 reload nginx。
+   chat_limit：/chat；api_limit：/api 与 /
+
+--- 已有 Certbot HTTPS 时 ---
+先完成步骤 1（00-limits.conf）。
+再用仓库里 astra-site-https-certbot.example.conf 中「listen 443」那个 server {}
+替换你站点文件里对应的 443 整段；listen 80 的 Certbot 块一般不用动。
+证书路径若与示例域名不一致，改 ssl_certificate 两行即可。
