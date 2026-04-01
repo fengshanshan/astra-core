@@ -22,7 +22,6 @@ User input (birth info + question)
 astra-core/
 ├── app/
 │   ├── main.py              # FastAPI entry, API routes, static file serving
-│   ├── zodiac.py            # Longitude → sign/degree
 │   ├── services/
 │   │   ├── chart_service.py # Chart calculation (planets, houses, aspects)
 │   │   ├── chat_service.py  # RAG: feature matching against knowledge base
