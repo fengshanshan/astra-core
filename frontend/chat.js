@@ -17,21 +17,21 @@ const conversationSelect = document.getElementById("conversation-select");
 const newConversationBtn = document.getElementById("new-conversation-btn");
 const placeSearch = document.getElementById("place-search");
 const searchBtn = document.getElementById("search-btn");
-const mapContainer = document.getElementById("map-container");
+const cityResultsEl = document.getElementById("city-results");
 const selectedPlaceEl = document.getElementById("selected-place");
 const selectedPlaceText = document.getElementById("selected-place-text");
 const clearPlaceBtn = document.getElementById("clear-place");
+const cityHintEl = document.getElementById("city-hint");
+const manualLatInput = document.getElementById("manual-lat");
+const manualLngInput = document.getElementById("manual-lng");
+const manualPlaceNameInput = document.getElementById("manual-place-name");
+const manualApplyBtn = document.getElementById("manual-apply-btn");
 
 let wechatId = null;
 let selectedLocation = null;
-let map = null;
-let marker = null;
 let currentConversationId = null;
-
-const NOMINATIM_HEADERS = {
-  "Accept": "application/json",
-  "User-Agent": "ChartService/1.0 (birthplace selector)",
-};
+/** 服务端是否配置了 AMAP_KEY（未配置则禁用搜索） */
+let geoSearchAvailable = false;
 
 function showLoading(show, text = "加载中...") {
   loadingText.textContent = text;
@@ -45,84 +45,141 @@ function showSection(section) {
   section.classList.remove("hidden");
 }
 
-// ========== Map ==========
-function initMap() {
-  if (map) return;
-  map = L.map(mapContainer).setView([35, 105], 3);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap",
-  }).addTo(map);
-  map.on("click", async (e) => {
-    const { lat, lng } = e.latlng;
-    setLocation(lat, lng, "获取中...");
-    try {
-      const name = await reverseGeocode(lat, lng);
-      setLocation(lat, lng, name);
-    } catch {
-      setLocation(lat, lng, `${lat.toFixed(2)}°, ${lng.toFixed(2)}°`);
+// ========== 出生地：城市搜索（经纬度 → 后端 timezonefinder 判时区）==========
+async function initGeoSearchAvailability() {
+  try {
+    const cfg = await fetch(`${API_BASE}/api/geo/config`).then((r) => r.json());
+    geoSearchAvailable = !!cfg.amap;
+  } catch {
+    geoSearchAvailable = false;
+  }
+  if (!placeSearch || !searchBtn) return;
+  const searchPanel = document.querySelector(".city-panel-search");
+  if (!geoSearchAvailable) {
+    placeSearch.disabled = true;
+    searchBtn.disabled = true;
+    placeSearch.placeholder = "未配置高德 Key，无法搜索";
+    searchPanel?.classList.add("city-panel-search--disabled");
+    if (cityHintEl) {
+      cityHintEl.textContent =
+        "未配置高德 Key 时无法搜索，请用手动经纬度兜底，或跳过出生地（使用中国时区）。";
     }
-  });
+  } else {
+    searchPanel?.classList.remove("city-panel-search--disabled");
+  }
 }
+
+initGeoSearchAvailability();
 
 function setLocation(lat, lon, name) {
   selectedLocation = { lat, lon, name };
-  selectedPlaceText.textContent = `已选: ${name}`;
+  selectedPlaceText.textContent = `已选: ${name}（${lat.toFixed(2)}°, ${lon.toFixed(2)}°）`;
   selectedPlaceEl.classList.remove("hidden");
-  if (marker) map.removeLayer(marker);
-  marker = L.marker([lat, lon]).addTo(map);
-  map.setView([lat, lon], Math.max(map.getZoom(), 10));
+  cityResultsEl.classList.add("hidden");
+  cityResultsEl.innerHTML = "";
+  if (manualLatInput) manualLatInput.value = String(lat);
+  if (manualLngInput) manualLngInput.value = String(lon);
+  if (manualPlaceNameInput) {
+    manualPlaceNameInput.value = name === "手动坐标" ? "" : name;
+  }
+}
+
+function applyManualCoordinates() {
+  const latStr = manualLatInput?.value?.trim() ?? "";
+  const lngStr = manualLngInput?.value?.trim() ?? "";
+  if (!latStr || !lngStr) {
+    alert("请填写纬度与经度");
+    return;
+  }
+  const lat = Number(latStr);
+  const lon = Number(lngStr);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    alert("经纬度必须是数字");
+    return;
+  }
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    alert("纬度需在 -90～90，经度需在 -180～180");
+    return;
+  }
+  const note = (manualPlaceNameInput?.value ?? "").trim();
+  const name = note || "手动坐标";
+  setLocation(lat, lon, name);
+}
+
+function renderCityResults(results) {
+  cityResultsEl.innerHTML = "";
+  results.forEach((r) => {
+    const li = document.createElement("li");
+    li.className = "city-result-item";
+    li.setAttribute("role", "option");
+    li.dataset.lat = String(r.lat);
+    li.dataset.lng = String(r.lng);
+    li.dataset.name = r.name || "";
+    li.textContent = `${r.name} · ${Number(r.lat).toFixed(2)}°, ${Number(r.lng).toFixed(2)}°`;
+    li.addEventListener("click", () => {
+      setLocation(r.lat, r.lng, r.name);
+    });
+    cityResultsEl.appendChild(li);
+  });
+  cityResultsEl.classList.toggle("hidden", results.length === 0);
 }
 
 clearPlaceBtn?.addEventListener("click", () => {
   selectedLocation = null;
   selectedPlaceEl.classList.add("hidden");
-  if (marker) {
-    map.removeLayer(marker);
-    marker = null;
-  }
+  cityResultsEl.classList.add("hidden");
+  cityResultsEl.innerHTML = "";
+  if (manualLatInput) manualLatInput.value = "";
+  if (manualLngInput) manualLngInput.value = "";
+  if (manualPlaceNameInput) manualPlaceNameInput.value = "";
 });
 
-async function reverseGeocode(lat, lon) {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS });
-  if (!res.ok) throw new Error("Geocoding failed");
-  const data = await res.json();
-  const addr = data.address || {};
-  const city = addr.city || addr.town || addr.village || addr.municipality || addr.county;
-  const country = addr.country;
-  if (city && country) return `${city}, ${country}`;
-  if (city || country) return city || country;
-  return data.display_name?.split(",").slice(0, 2).join(", ") || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
-}
+manualApplyBtn?.addEventListener("click", () => {
+  applyManualCoordinates();
+});
+[manualLatInput, manualLngInput, manualPlaceNameInput].forEach((el) => {
+  el?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      applyManualCoordinates();
+    }
+  });
+});
 
 async function searchPlace(query) {
-  const q = encodeURIComponent(query.trim());
+  const q = query.trim();
   if (!q) return;
-  const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5`;
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS });
-  if (!res.ok) throw new Error("搜索失败");
-  const data = await res.json();
-  if (!data.length) {
-    alert("未找到该地点");
+  if (!geoSearchAvailable) {
+    alert("未配置 AMAP_KEY，无法搜索地点");
     return;
   }
-  const first = data[0];
-  setLocation(parseFloat(first.lat), parseFloat(first.lon), first.display_name);
+  const url = `${API_BASE}/api/geo/search?q=${encodeURIComponent(q)}&city_only=true`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert(err.detail || "搜索失败");
+    return;
+  }
+  const data = await res.json();
+  const results = data.results || [];
+  if (!results.length) {
+    alert("未找到该城市，请换关键词试试");
+    cityResultsEl.classList.add("hidden");
+    cityResultsEl.innerHTML = "";
+    return;
+  }
+  renderCityResults(results);
 }
 
-searchBtn?.addEventListener("click", () => searchPlace(placeSearch.value));
+searchBtn?.addEventListener("click", () => {
+  searchPlace(placeSearch.value).catch((e) => alert(e.message || "搜索失败"));
+});
 placeSearch?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
-    searchPlace(placeSearch.value);
+    searchPlace(placeSearch.value).catch((err) => alert(err.message || "搜索失败"));
   }
 });
-
-const formObserver = new IntersectionObserver(
-  ([entry]) => { if (entry.isIntersecting) initMap(); },
-  { threshold: 0.1 }
-);
-formObserver.observe(birthSection);
 
 // 页面加载时检查 URL 中的 wechat_id，若有则直接进入对话
 (async function initFromUrl() {

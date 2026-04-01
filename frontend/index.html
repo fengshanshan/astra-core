@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="chat.css">
 </head>
@@ -48,15 +47,52 @@
           </div>
           <div class="form-row">
             <label>出生地（可选，不选则使用中国时区）</label>
-            <div class="map-picker">
-              <div class="map-search-row">
-                <input type="text" id="place-search" placeholder="搜索城市或地点..." autocomplete="off">
-                <button type="button" id="search-btn" class="btn btn-secondary">搜索</button>
+            <div class="city-picker">
+              <div class="city-panel city-panel-search">
+                <div class="city-panel-head">
+                  <span class="city-panel-mark" aria-hidden="true"></span>
+                  <div class="city-panel-titles">
+                    <span class="city-panel-title">搜索城市</span>
+                    <span class="city-panel-desc">首选方式：在结果里点选；支持中文与拼音</span>
+                  </div>
+                </div>
+                <div class="city-search-row">
+                  <input type="text" id="place-search" placeholder="例如 北京、上海、广州…" autocomplete="off">
+                  <button type="button" id="search-btn" class="btn city-search-btn">搜索</button>
+                </div>
+                <ul id="city-results" class="city-results hidden" role="listbox" aria-label="城市候选"></ul>
               </div>
-              <div id="map-container" class="map-container"></div>
-              <p class="map-hint">点击地图选择出生地，或在上方搜索</p>
+
+              <p class="city-fallback-bridge">若搜索结果不符合预期，可用手动经纬度<strong>兜底</strong>：</p>
+
+              <div class="city-panel city-panel-manual city-panel-fallback">
+                <div class="city-panel-head">
+                  <span class="city-panel-mark city-panel-mark--coord" aria-hidden="true"></span>
+                  <div class="city-panel-titles">
+                    <span class="city-panel-title">手动坐标（兜底）</span>
+                    <span class="city-panel-desc">WGS84，与星历一致；搜索不到或不准时用</span>
+                  </div>
+                </div>
+                <div class="city-coords-grid">
+                  <div class="city-field">
+                    <label for="manual-lat">纬度</label>
+                    <input type="number" id="manual-lat" placeholder="-90 ~ 90" step="any" min="-90" max="90" autocomplete="off" inputmode="decimal">
+                  </div>
+                  <div class="city-field">
+                    <label for="manual-lng">经度</label>
+                    <input type="number" id="manual-lng" placeholder="-180 ~ 180" step="any" min="-180" max="180" autocomplete="off" inputmode="decimal">
+                  </div>
+                </div>
+                <div class="city-field city-field-wide">
+                  <label for="manual-place-name">地点备注</label>
+                  <input type="text" id="manual-place-name" placeholder="可选，用于档案展示" maxlength="120" autocomplete="off">
+                </div>
+                <button type="button" id="manual-apply-btn" class="btn city-apply-btn">使用手动坐标</button>
+              </div>
+
+              <p id="city-hint" class="city-hint">用于匹配出生地时区：优先搜索选点；不符预期再用下方兜底。</p>
               <div id="selected-place" class="selected-place hidden">
-                <span id="selected-place-text"></span>
+                <span id="selected-place-text" class="selected-place-main"></span>
                 <button type="button" id="clear-place" class="btn-clear">清除</button>
               </div>
             </div>
@@ -93,7 +129,6 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
   <script src="chat.js"></script>
 </body>
 </html>

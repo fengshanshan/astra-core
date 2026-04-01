@@ -174,3 +174,343 @@
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ——— 出生地：必须用 .form-row .city-picker 提高优先级，覆盖 style.css 里 .form-row input ——— */
+.chat-app .form-row .city-picker {
+  --city-h: 44px;
+  --city-r: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 0.35rem;
+}
+
+/* 统一本区块内所有文本/数字输入（避免备注框与经纬度样式不一致） */
+.chat-app .form-row .city-picker input[type="text"],
+.chat-app .form-row .city-picker input[type="number"] {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--city-h);
+  margin: 0;
+  padding: 0 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--city-r);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  line-height: 1.2;
+  color: var(--text);
+  background: #fffdf9;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chat-app .form-row .city-picker input[type="number"]::-webkit-outer-spin-button,
+.chat-app .form-row .city-picker input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.chat-app .form-row .city-picker input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.chat-app .form-row .city-picker input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.chat-app .form-row .city-picker input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(139, 115, 85, 0.12);
+}
+
+.chat-app .form-row .city-picker input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chat-app .city-panel {
+  padding: 1rem 1rem 1.05rem;
+  border-radius: var(--city-r);
+  background: #fffdf9;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+/* 主路径：搜索 */
+.chat-app .city-panel-search {
+  border-color: rgba(139, 115, 85, 0.28);
+}
+
+/* 兜底：视觉弱化，与主路径区分 */
+.chat-app .city-panel-fallback {
+  padding: 0.85rem 0.95rem;
+  background: var(--bg);
+  border-style: dashed;
+  border-color: var(--accent-soft);
+  box-shadow: none;
+}
+
+.chat-app .city-panel-fallback .city-panel-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.chat-app .city-panel-fallback .city-panel-desc {
+  font-size: 0.7rem;
+}
+
+.chat-app .form-row .city-picker .city-panel-fallback input[type="text"],
+.chat-app .form-row .city-picker .city-panel-fallback input[type="number"] {
+  background: rgba(255, 253, 248, 0.92);
+}
+
+.chat-app .city-fallback-bridge {
+  margin: 0.85rem 0 0.25rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.chat-app .city-fallback-bridge strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.chat-app .city-panel-search--disabled {
+  opacity: 0.72;
+}
+
+.chat-app .city-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.chat-app .city-panel-mark {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.chat-app .city-panel-mark--coord {
+  background: #7a8f94;
+}
+
+.chat-app .city-panel-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.chat-app .city-panel-title {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chat-app .city-panel-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+/* 搜索行：输入与按钮同高、同圆角（抵消 .btn 默认 padding） */
+.chat-app .form-row .city-search-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.chat-app .form-row .city-search-row > input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: var(--city-h);
+}
+
+.chat-app .form-row .city-search-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-width: 5.5rem;
+  height: var(--city-h);
+  margin: 0;
+  padding: 0 1rem;
+  border: none;
+  border-radius: var(--city-r);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  box-sizing: border-box;
+  background: var(--primary);
+  color: #fff;
+  transition: background 0.2s;
+}
+
+.chat-app .form-row .city-search-btn:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.chat-app .form-row .city-search-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-app .city-coords-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 0.85rem;
+  align-items: start;
+}
+
+@media (max-width: 420px) {
+  .chat-app .city-coords-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chat-app .city-field label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 0.35rem;
+}
+
+.chat-app .city-field-wide {
+  margin-top: 0.25rem;
+}
+
+/* 兜底「使用手动坐标」：线框次要，弱于上方「搜索」与底部「创建档案」 */
+.chat-app .form-row .city-apply-btn {
+  width: 100%;
+  height: var(--city-h);
+  margin-top: 0.75rem;
+  padding: 0 1rem;
+  border: 1px solid var(--primary);
+  border-radius: var(--city-r);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+  background: #fffef9;
+  color: var(--primary);
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.chat-app .form-row .city-apply-btn:hover {
+  background: rgba(125, 107, 79, 0.07);
+  border-color: var(--primary-hover);
+  color: var(--primary-hover);
+}
+
+.chat-app .city-results {
+  list-style: none;
+  margin: 0.65rem 0 0;
+  padding: 0.2rem 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border-radius: var(--city-r);
+  border: 1px solid var(--border);
+  background: #fffdf9;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-soft) transparent;
+}
+
+.chat-app .city-results.hidden {
+  display: none;
+}
+
+.chat-app .city-result-item {
+  padding: 0.62rem 0.85rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(229, 221, 208, 0.7);
+  transition: background 0.15s;
+}
+
+.chat-app .city-result-item:last-child {
+  border-bottom: none;
+}
+
+.chat-app .city-result-item:hover {
+  background: rgba(139, 115, 85, 0.07);
+}
+
+.chat-app .city-result-item:active {
+  background: rgba(139, 115, 85, 0.11);
+}
+
+.chat-app .city-hint {
+  margin: 0.85rem 0 0;
+  padding: 0 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  opacity: 0.92;
+}
+
+.chat-app .selected-place {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(139, 115, 85, 0.09) 0%, rgba(196, 181, 160, 0.12) 100%);
+  border: 1px solid rgba(139, 115, 85, 0.2);
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 2px 12px rgba(44, 36, 22, 0.05);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.chat-app .selected-place.hidden {
+  display: none;
+}
+
+.chat-app .selected-place-main {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+}
+
+.chat-app .btn-clear {
+  flex-shrink: 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chat-app .btn-clear:hover {
+  background: #fff;
+  color: var(--text);
+}

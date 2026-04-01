@@ -90,7 +90,7 @@ Latitude and longitude are optional; omit to use China timezone (Beijing).
 ## Frontend
 
 - User identity (wechat_id) → new user: birth form with map; existing user: direct to chat
-- Birthplace selection: Leaflet map click + Nominatim place search
+- Birthplace selection: optional city search (Amap geocoding when `AMAP_KEY` is set)
 - Chart summary display
 - Multi-turn astrological chat
 

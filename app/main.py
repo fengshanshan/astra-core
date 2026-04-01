@@ -39,6 +39,7 @@ from schemas import (
 from app.services.chart_service import calculate_chart
 from app.services.chat_service import handle_chat
 from app.services.user_service import check_user_exists, register_user
+from app.services import amap_geo
 from app.db import init_db, SessionLocal
 from app.repositories.user_repo import get_user
 from app.repositories import conversation_repo, message_repo
@@ -83,6 +84,10 @@ class _InMemoryRateLimiter:
 _CHAT_LIMIT_COUNT = _parse_int_env("CHAT_RATE_LIMIT_COUNT", 20)
 _CHAT_LIMIT_WINDOW_SEC = _parse_int_env("CHAT_RATE_LIMIT_WINDOW_SEC", 60)
 _chat_rate_limiter = _InMemoryRateLimiter(_CHAT_LIMIT_COUNT, _CHAT_LIMIT_WINDOW_SEC)
+
+_GEO_LIMIT_COUNT = _parse_int_env("GEO_RATE_LIMIT_COUNT", 45)
+_GEO_LIMIT_WINDOW_SEC = _parse_int_env("GEO_RATE_LIMIT_WINDOW_SEC", 60)
+_geo_rate_limiter = _InMemoryRateLimiter(_GEO_LIMIT_COUNT, _GEO_LIMIT_WINDOW_SEC)
 
 
 def _client_ip(request: Request) -> str:
@@ -139,6 +144,47 @@ def calculate(request: ChartRequest):
 @app.on_event("startup")
 def startup():
     pass  # 数据库初始化已移至 scripts/init_db.py，不在服务启动时自动执行
+
+
+@app.get("/api/geo/config")
+def geo_config():
+    """是否已配置高德 Web Key（地点搜索与逆地理均依赖高德）。"""
+    return {"amap": amap_geo.amap_configured()}
+
+
+@app.get("/api/geo/search")
+def geo_search(q: str, request: Request, city_only: bool = False):
+    """地点搜索；city_only 时仅返回城市/行政区代表坐标（用于时区），否则高德会合并 inputtips 联想。"""
+    key_ip = f"geo:{_client_ip(request)}"
+    if not _geo_rate_limiter.allow(key_ip):
+        raise HTTPException(status_code=429, detail="搜索过于频繁，请稍后再试")
+    query = (q or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="缺少搜索关键词")
+    if len(query) > 100:
+        raise HTTPException(status_code=400, detail="关键词过长")
+    if not amap_geo.amap_configured():
+        raise HTTPException(status_code=503, detail="未配置 AMAP_KEY，无法搜索地点")
+    try:
+        provider, results = amap_geo.search_places(query, city_only=city_only)
+        return {"provider": provider, "results": results}
+    except OSError as e:
+        raise HTTPException(status_code=502, detail=f"地点服务暂时不可用: {e!s}") from e
+
+
+@app.get("/api/geo/reverse")
+def geo_reverse(lat: float, lng: float, request: Request):
+    """逆地理编码；经纬度为 WGS84（与星历计算一致）。"""
+    key_ip = f"geo:{_client_ip(request)}"
+    if not _geo_rate_limiter.allow(key_ip):
+        raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        raise HTTPException(status_code=400, detail="经纬度超出范围")
+    try:
+        provider, name = amap_geo.reverse_geocode(lat, lng)
+        return {"provider": provider, "name": name}
+    except OSError as e:
+        raise HTTPException(status_code=502, detail=f"地点服务暂时不可用: {e!s}") from e
 
 
 @app.get("/api/user/check")

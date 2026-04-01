@@ -38,7 +38,17 @@ python scripts/init_db.py
 |----------|----------|--------|-------------|
 | `DATABASE_URL` | Yes | Render (auto from PostgreSQL) | Connection string. Render uses `postgres://`; the app converts to `postgresql://` for psycopg2. |
 | `DEEPSEEK_API_KEY` | Yes | You | DeepSeek API key for LLM. Add in Render Dashboard → Environment. |
+| `AMAP_KEY` | 出生地城市搜索建议配置 | You | 见下文「城市地理编码」。不配则注册页无法使用地点搜索（仍可用默认中国时区）。 |
+| `GEO_USE_SYSTEM_PROXY` | No | You | 设为 `1`/`true` 时，地理编码 HTTP 请求**使用**系统 `HTTP(S)_PROXY`（默认**忽略**代理、直连公网，避免本机代理未启动时出现 `Connection refused`）。 |
 | `INIT_DB` | No | You | 设为 `true` 时，build 阶段自动初始化数据库建表。完成后改回 `false`。 |
+
+### 城市地理编码与成本（高德）
+
+前端**不加载地图瓦片**，仅用后端代理的地理编码接口解析城市并得到经纬度（供 `timezonefinder` 判时区）。高德**不是**「无限量、零门槛免费」的公共服务：
+
+- 需在 [高德开放平台](https://console.amap.com/) 注册并创建应用，申请 **Web 服务** Key（本项目使用地理编码、逆地理编码等接口）。
+- **未实名认证**的开发者通常**没有**可用的 Web 服务免费额度；**个人实名认证**后，一般可按 [官方计费说明](https://lbs.amap.com/pages/base_service_price) 获得**月度免费调用量**（具体以控制台 [配额管理](https://console.amap.com/dev/flow/manage) 为准）。超出后按量付费或购买资源包。
+- 小流量个人站、仅注册页选城市，在免费额度内通常**不产生现金支出**，但仍属「厂商配额」而非开源意义上的完全免费。
 
 ## Manual Setup (without Blueprint)
 
@@ -66,7 +76,7 @@ Chart calculation uses Swiss Ephemeris data from the `ephemeris/` folder. Ensure
 
 ## Health Check
 
-The service exposes `/api/health`. Render uses it for health checks. Response: `{"status": "chart service running"}`.
+The service exposes `/api/health`. Render uses it for health checks. Response: `{"status": "ok"}`.
 
 ## Troubleshooting
 
