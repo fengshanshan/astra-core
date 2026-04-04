@@ -1,6 +1,9 @@
 import os
 import logging
 from pathlib import Path
+from collections import defaultdict, deque
+from threading import Lock
+from time import time
 
 from dotenv import load_dotenv
 
@@ -18,7 +21,7 @@ def _cors_allow_credentials() -> bool:
     raw = os.getenv("CORS_ORIGINS", "*").strip()
     return bool(raw and raw != "*")
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -36,12 +39,81 @@ from schemas import (
 from app.services.chart_service import calculate_chart
 from app.services.chat_service import handle_chat
 from app.services.user_service import check_user_exists, register_user
+from app.services import amap_geo
 from app.db import init_db, SessionLocal
 from app.repositories.user_repo import get_user
 from app.repositories import conversation_repo, message_repo
 from app.models import SystemPrompt, Conversation
 
 app = FastAPI()
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+        return value if value > 0 else default
+    except ValueError:
+        return default
+
+
+class _InMemoryRateLimiter:
+    """Simple sliding-window limiter for single-process deployments."""
+
+    def __init__(self, max_requests: int, window_seconds: int):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            bucket = self._hits[key]
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if len(bucket) >= self.max_requests:
+                return False
+            bucket.append(now)
+            return True
+
+
+_CHAT_LIMIT_COUNT = _parse_int_env("CHAT_RATE_LIMIT_COUNT", 20)
+_CHAT_LIMIT_WINDOW_SEC = _parse_int_env("CHAT_RATE_LIMIT_WINDOW_SEC", 60)
+_chat_rate_limiter = _InMemoryRateLimiter(_CHAT_LIMIT_COUNT, _CHAT_LIMIT_WINDOW_SEC)
+
+_GEO_LIMIT_COUNT = _parse_int_env("GEO_RATE_LIMIT_COUNT", 45)
+_GEO_LIMIT_WINDOW_SEC = _parse_int_env("GEO_RATE_LIMIT_WINDOW_SEC", 60)
+_geo_rate_limiter = _InMemoryRateLimiter(_GEO_LIMIT_COUNT, _GEO_LIMIT_WINDOW_SEC)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded_for = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _enforce_chat_access_guard(request: Request, wechat_id: str) -> None:
+    token_required = os.getenv("CHAT_ACCESS_TOKEN", "").strip()
+    token_given = (request.headers.get("x-chat-token") or "").strip()
+    if token_required and token_given != token_required:
+        raise HTTPException(status_code=401, detail="chat token 无效")
+
+    allowlist_raw = os.getenv("CHAT_ALLOWED_WECHAT_IDS", "").strip()
+    if allowlist_raw:
+        allowlist = {item.strip() for item in allowlist_raw.split(",") if item.strip()}
+        if wechat_id not in allowlist:
+            raise HTTPException(status_code=403, detail="当前用户不允许访问 chat")
+
+    limiter_key = f"{wechat_id}:{_client_ip(request)}"
+    if not _chat_rate_limiter.allow(limiter_key):
+        raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
 
 # CORS：默认 * 且不带 credentials；生产可设 CORS_ORIGINS=https://a.com,https://b.com 以启用 credentials
 _cors_origins = os.getenv("CORS_ORIGINS", "*").strip() or "*"
@@ -72,6 +144,47 @@ def calculate(request: ChartRequest):
 @app.on_event("startup")
 def startup():
     pass  # 数据库初始化已移至 scripts/init_db.py，不在服务启动时自动执行
+
+
+@app.get("/api/geo/config")
+def geo_config():
+    """是否已配置高德 Web Key（地点搜索与逆地理均依赖高德）。"""
+    return {"amap": amap_geo.amap_configured()}
+
+
+@app.get("/api/geo/search")
+def geo_search(q: str, request: Request, city_only: bool = False):
+    """地点搜索；city_only 时仅返回城市/行政区代表坐标（用于时区），否则高德会合并 inputtips 联想。"""
+    key_ip = f"geo:{_client_ip(request)}"
+    if not _geo_rate_limiter.allow(key_ip):
+        raise HTTPException(status_code=429, detail="搜索过于频繁，请稍后再试")
+    query = (q or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="缺少搜索关键词")
+    if len(query) > 100:
+        raise HTTPException(status_code=400, detail="关键词过长")
+    if not amap_geo.amap_configured():
+        raise HTTPException(status_code=503, detail="未配置 AMAP_KEY，无法搜索地点")
+    try:
+        provider, results = amap_geo.search_places(query, city_only=city_only)
+        return {"provider": provider, "results": results}
+    except OSError as e:
+        raise HTTPException(status_code=502, detail=f"地点服务暂时不可用: {e!s}") from e
+
+
+@app.get("/api/geo/reverse")
+def geo_reverse(lat: float, lng: float, request: Request):
+    """逆地理编码；经纬度为 WGS84（与星历计算一致）。"""
+    key_ip = f"geo:{_client_ip(request)}"
+    if not _geo_rate_limiter.allow(key_ip):
+        raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        raise HTTPException(status_code=400, detail="经纬度超出范围")
+    try:
+        provider, name = amap_geo.reverse_geocode(lat, lng)
+        return {"provider": provider, "name": name}
+    except OSError as e:
+        raise HTTPException(status_code=502, detail=f"地点服务暂时不可用: {e!s}") from e
 
 
 @app.get("/api/user/check")
@@ -147,8 +260,9 @@ def update_prompt(req: PromptUpdateRequest):
 
 
 @app.post("/chat")
-def simple_chat(req: SimpleChatRequest) -> SimpleChatResponse:
+def simple_chat(req: SimpleChatRequest, request: Request) -> SimpleChatResponse:
     try:
+        _enforce_chat_access_guard(request, req.wechat_id)
         reply, conversation_id, stage = handle_chat(req.wechat_id, req.message, conversation_id=req.conversation_id)
         db = SessionLocal()
         try:

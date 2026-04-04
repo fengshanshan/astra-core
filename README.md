@@ -22,7 +22,6 @@ User input (birth info + question)
 astra-core/
 ├── app/
 │   ├── main.py              # FastAPI entry, API routes, static file serving
-│   ├── zodiac.py            # Longitude → sign/degree
 │   ├── services/
 │   │   ├── chart_service.py # Chart calculation (planets, houses, aspects)
 │   │   ├── chat_service.py  # RAG: feature matching against knowledge base
@@ -90,7 +89,7 @@ Latitude and longitude are optional; omit to use China timezone (Beijing).
 ## Frontend
 
 - User identity (wechat_id) → new user: birth form with map; existing user: direct to chat
-- Birthplace selection: Leaflet map click + Nominatim place search
+- Birthplace selection: optional city search (Amap geocoding when `AMAP_KEY` is set)
 - Chart summary display
 - Multi-turn astrological chat
 

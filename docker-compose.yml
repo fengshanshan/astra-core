@@ -1,0 +1,56 @@
+# 本地 / ECS：应用 + Postgres 同机 Docker 编排。之后迁 RDS 时只改 DATABASE_URL 即可。
+#
+# 首次：INIT_DB=true 建表，成功后改为 false。
+# .env 里 DATABASE_URL 可省略，默认连到下面的 postgres 服务。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: astra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-astra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astra}
+      POSTGRES_DB: ${POSTGRES_DB:-astra}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # 仅本机可连，便于在 ECS 上 pg_dump；不需要可删掉 ports
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  astra-core:
+    build: .
+    container_name: astra-core
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      # 未设置时默认连 compose 内的 postgres（账号与下方 POSTGRES_* 默认一致）
+      # 若改了 POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB，请在 .env 里显式写 DATABASE_URL
+      DATABASE_URL: ${DATABASE_URL:-postgresql://astra:astra@postgres:5432/astra}
+
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+
+      CHAT_ALLOWED_WECHAT_IDS: ${CHAT_ALLOWED_WECHAT_IDS}
+      CHAT_ACCESS_TOKEN: ${CHAT_ACCESS_TOKEN}
+
+      CHAT_RATE_LIMIT_COUNT: ${CHAT_RATE_LIMIT_COUNT:-10}
+      CHAT_RATE_LIMIT_WINDOW_SEC: ${CHAT_RATE_LIMIT_WINDOW_SEC:-60}
+
+      INIT_DB: ${INIT_DB:-false}
+
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+
+volumes:
+  postgres_data:

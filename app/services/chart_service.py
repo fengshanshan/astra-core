@@ -4,13 +4,34 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from timezonefinder import TimezoneFinder
 
-from app.zodiac import longitude_to_sign
-
 # Ephemeris data path (project root / ephemeris)
 EPHE_PATH = Path(__file__).parent.parent.parent / "ephemeris"
 swe.set_ephe_path(str(EPHE_PATH))
 
 tf = TimezoneFinder()
+
+ZODIAC_SIGNS = [
+    "Aries",
+    "Taurus",
+    "Gemini",
+    "Cancer",
+    "Leo",
+    "Virgo",
+    "Libra",
+    "Scorpio",
+    "Sagittarius",
+    "Capricorn",
+    "Aquarius",
+    "Pisces",
+]
+
+
+def longitude_to_sign(longitude: float):
+    index = int(longitude // 30)
+    sign = ZODIAC_SIGNS[index]
+    degree = round(longitude % 30, 2)
+    return {"sign": sign, "degree": degree}
+
 
 # 行星 + 外行星 + 虚点（顺序与常见星盘表一致）
 # 注：sepl_18.se1, semo_18.se1 覆盖行星；Chiron/Juno 需 seas_18.se1
